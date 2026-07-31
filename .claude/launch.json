@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "soloscribe",
+      "runtimeExecutable": "/Users/davidgringras26-27/soloscribe/.venv/bin/python",
+      "runtimeArgs": ["-m", "uvicorn", "soloscribe.webapp.server:app", "--host", "127.0.0.1", "--port", "8746"],
+      "port": 8746
+    }
+  ]
+}

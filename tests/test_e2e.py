@@ -339,6 +339,82 @@ def test_quantization(lick: L.Lick):
 
 
 # --------------------------------------------------------------------------
+# 3b. Octave double-stops: what the ghost-suppression knob costs
+# --------------------------------------------------------------------------
+
+# Upper-voice (octave doubling) recall on octaves_g at the SHIPPED
+# GHOST_AMP_RATIO. This is a characterization baseline, not an aspiration:
+# suppressing octave ghosts and preserving octave double-stops are the same
+# decision seen from two sides, and no one has claimed the second one works.
+# What must not happen is the trade moving silently. If this fails, someone
+# changed the ghost heuristic — read the printed number, decide whether the
+# new trade is the one you want, and update this constant deliberately.
+OCTAVE_UPPER_RECALL_BASELINE = 0.000
+OCTAVE_BASELINE_TOL = 0.05
+OCTAVE_MELODY_BAR = 0.90
+
+
+@pytest.mark.parametrize("tolerance", [ONSET_TOL_LOOSE], ids=["100ms"])
+def test_octave_double_stops(tolerance):
+    """Octave melody: the line must survive; the doubling is characterized.
+
+    octaves_g is 22 melody notes each sounding as an octave double-stop. The
+    melody itself is non-negotiable — losing it would mean ghost suppression
+    eating real notes. The doublings are measured and pinned so that tuning
+    the ghost heuristic cannot quietly change what octave playing costs.
+    """
+    from mir_eval.transcription import match_notes
+
+    transcribe = _stage("transcribe", "transcribe")
+    tr_mod = importlib.import_module("soloscribe.transcribe")
+    ratio = getattr(tr_mod, "GHOST_AMP_RATIO", None)
+
+    lick = L.OCTAVES_G
+    L.write_fixtures()
+    ref = L.lick_events(lick)
+    # _build emits the low voice then its doubling, so odd indices are the
+    # octave notes and even indices are the melody.
+    lower = [i for i in range(len(ref)) if i % 2 == 0]
+    upper = [i for i in range(len(ref)) if i % 2 == 1]
+
+    with _stage_guard("soloscribe.transcribe.transcribe"):
+        est = transcribe(L.fixture_path(lick, "none"), mode="solo")
+
+    ref_int, ref_hz = _arrays(ref)
+    est_int, est_hz = _arrays(est)
+    matched = {a for a, _ in match_notes(
+        ref_int, ref_hz, est_int, est_hz,
+        onset_tolerance=tolerance, offset_ratio=None,
+    )}
+    melody_recall = sum(1 for i in lower if i in matched) / len(lower)
+    upper_recall = sum(1 for i in upper if i in matched) / len(upper)
+    p, r, f = _score(ref, est, tolerance)
+
+    print(f"\noctave double-stops — {lick.name} "
+          f"(GHOST_AMP_RATIO={ratio if ratio is not None else 'n/a'})")
+    print(f"  ground truth                : {len(lower)} melody notes, "
+          f"{len(upper)} octave doublings; {len(est)} transcribed")
+    print(f"  melody (lower voice) recall : {melody_recall:.3f}   "
+          f"bar >= {OCTAVE_MELODY_BAR:.2f}")
+    print(f"  octave doubling recall      : {upper_recall:.3f}   "
+          f"baseline {OCTAVE_UPPER_RECALL_BASELINE:.3f} +-{OCTAVE_BASELINE_TOL:.2f}")
+    print(f"  overall P/R/F1@100ms        : {p:.3f} / {r:.3f} / {f:.3f}")
+
+    assert melody_recall >= OCTAVE_MELODY_BAR, (
+        f"octaves_g: melody recall {melody_recall:.3f} below "
+        f"{OCTAVE_MELODY_BAR:.2f} — ghost suppression is eating the actual line, "
+        f"not just the doublings."
+    )
+    assert abs(upper_recall - OCTAVE_UPPER_RECALL_BASELINE) <= OCTAVE_BASELINE_TOL, (
+        f"octaves_g: octave-doubling recall moved from the recorded "
+        f"{OCTAVE_UPPER_RECALL_BASELINE:.3f} to {upper_recall:.3f} "
+        f"(GHOST_AMP_RATIO={ratio}). This is not necessarily a bug — it is the "
+        f"octave-playing capability changing. Decide whether the new trade is "
+        f"the one you want, then update OCTAVE_UPPER_RECALL_BASELINE."
+    )
+
+
+# --------------------------------------------------------------------------
 # 4. Full chain
 # --------------------------------------------------------------------------
 

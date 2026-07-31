@@ -42,9 +42,12 @@ Or from the command line:
   slides/hammer-ons and exact articulation are beyond it — that's the human
   cleanup pass.
 
-Measured accuracy on synthesized ground-truth licks (where every note is known)
-is in `docs/VALIDATION.md`, and each run's own report is the number that
-matters for that clip.
+Measured accuracy on synthesized ground-truth licks (where every note is
+known): note-level F1 0.96–0.99 on clean solo renders, 0.90–0.97 with a
+backing pad, 6/6 correct swing/straight calls — full table, methodology and
+honest limits in `docs/VALIDATION.md`. Real recordings will land below the
+synthetic numbers; each run's own report is the number that matters for that
+clip.
 
 ## Pipeline
 
