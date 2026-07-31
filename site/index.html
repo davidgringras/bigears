@@ -3,176 +3,673 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SoloScribe — guitar solos, written out honestly</title>
-<meta name="description" content="Give it a recording of a guitar solo. Get back a Guitar Pro file — and an honest, measured account of how much of it to trust.">
+<title>SoloScribe — watch a machine read music</title>
+<meta name="description" content="A guitar solo goes in. Notation, tab and an honest, measured account of how much to trust come out. Press play and watch it read the music.">
+<meta property="og:title" content="SoloScribe — watch a machine read music">
+<meta property="og:description" content="A guitar solo goes in. Notation, tab and an honest account of how much to trust come out. Press play and watch it read the music.">
+<meta property="og:image" content="https://davidgringras.github.io/soloscribe/site/assets/og.png">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='80' font-size='80'%3E%F0%9F%8E%B8%3C/text%3E%3C/svg%3E">
 <style>
   :root {
+    --ink: #16130f;
+    --ink2: #211d18;
+    --ink3: #2a251f;
     --paper: #f7f2ea;
     --card: #fdfbf7;
-    --ink: #2b2620;
-    --muted: #6f665a;
-    --brass: #a07430;
-    --brass-deep: #7d5a22;
-    --line: #e4dccd;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --paper: #211d18;
-      --card: #2a251f;
-      --ink: #ece5d8;
-      --muted: #a89c8a;
-      --brass: #c9964a;
-      --brass-deep: #e0b06a;
-      --line: #3a332a;
-    }
+    --text-d: #ece5d8;
+    --muted-d: #a89c8a;
+    --text-l: #2b2620;
+    --muted-l: #6f665a;
+    --brass: #c9964a;
+    --brass-hi: #e8b96a;
+    --brass-deep: #a07430;
+    --line-d: #3a332a;
+    --line-l: #e4dccd;
+    --glow: rgba(232, 185, 106, 0.55);
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
   body {
-    background: var(--paper); color: var(--ink);
-    font: 17px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--ink); color: var(--text-d);
+    font: 17px/1.68 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
   }
-  main { max-width: 41rem; margin: 0 auto; padding: 4rem 1.4rem 5rem; }
-  h1, h2 { font-family: "Iowan Old Style", "Palatino", Georgia, serif; font-weight: 600; }
-  h1 { font-size: 2.6rem; line-height: 1.15; letter-spacing: -0.01em; }
-  h2 { font-size: 1.45rem; margin: 3rem 0 0.9rem; }
-  p { margin: 0.85rem 0; }
-  .lede { font-size: 1.18rem; color: var(--muted); margin-top: 1rem; }
-  a { color: var(--brass-deep); text-decoration-thickness: 1px; text-underline-offset: 2px; }
-  .buttons { display: flex; gap: 0.8rem; flex-wrap: wrap; margin: 1.8rem 0 0.4rem; }
+  h1, h2, h3, .serif { font-family: "Iowan Old Style", "Palatino", "Palatino Linotype", Georgia, serif; }
+  a { color: var(--brass-hi); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+
+  /* ---------- hero ---------- */
+  .hero {
+    position: relative; min-height: 92vh;
+    display: flex; flex-direction: column; justify-content: center;
+    overflow: hidden;
+  }
+  #sky { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .hero-inner { position: relative; max-width: 60rem; margin: 0 auto; padding: 4rem 1.5rem; text-align: center; }
+  .overline {
+    letter-spacing: 0.28em; text-transform: uppercase; font-size: 0.78rem;
+    color: var(--brass); margin-bottom: 1.6rem; font-weight: 600;
+  }
+  h1 {
+    font-size: clamp(3rem, 9vw, 5.6rem); font-weight: 600; line-height: 1.04;
+    letter-spacing: -0.015em; color: var(--text-d);
+  }
+  h1 .flourish { color: var(--brass-hi); font-style: italic; }
+  .lede {
+    font-size: clamp(1.05rem, 2.4vw, 1.3rem); color: var(--muted-d);
+    max-width: 34em; margin: 1.6rem auto 0;
+  }
+  .hero-cta { margin-top: 2.6rem; display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
   .btn {
-    display: inline-block; padding: 0.72rem 1.25rem; border-radius: 8px;
-    text-decoration: none; font-weight: 600; font-size: 0.98rem;
-    border: 1px solid var(--line); background: var(--card); color: var(--ink);
+    display: inline-flex; align-items: center; gap: 0.6rem;
+    padding: 0.95rem 1.7rem; border-radius: 999px; border: 1px solid var(--line-d);
+    background: rgba(255,255,255,0.03); color: var(--text-d);
+    font-weight: 650; font-size: 1rem; text-decoration: none; cursor: pointer;
+    transition: transform 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
   }
-  .btn.primary { background: var(--brass); border-color: var(--brass); color: #fff; }
-  .card {
-    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
-    padding: 1.4rem 1.5rem; margin: 1.2rem 0;
+  .btn:hover { transform: translateY(-2px); background: rgba(255,255,255,0.06); }
+  .btn.primary {
+    background: linear-gradient(160deg, var(--brass-hi), var(--brass-deep));
+    border: none; color: #1c1610;
+    box-shadow: 0 8px 30px rgba(201, 150, 74, 0.35);
   }
-  .quiet { color: var(--muted); font-size: 0.95rem; }
-  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: 0.92rem; }
-  th, td { text-align: left; padding: 0.45rem 0.7rem; border-bottom: 1px solid var(--line); }
-  th { font-weight: 600; color: var(--muted); font-size: 0.85rem; }
+  .btn.primary:hover { box-shadow: 0 12px 40px rgba(201, 150, 74, 0.5); }
+  .scroll-hint {
+    position: absolute; bottom: 2rem; left: 50%; transform: translateX(-50%);
+    color: var(--muted-d); font-size: 1.4rem; animation: bob 2.4s ease-in-out infinite;
+  }
+  @keyframes bob { 0%,100% { transform: translate(-50%, 0); } 50% { transform: translate(-50%, 8px); } }
+
+  /* ---------- shared section chrome ---------- */
+  section { position: relative; }
+  .wrap { max-width: 46rem; margin: 0 auto; padding: 5rem 1.5rem; }
+  .wrap.wide { max-width: 62rem; }
+  h2 { font-size: clamp(1.7rem, 4vw, 2.3rem); font-weight: 600; margin-bottom: 1.1rem; letter-spacing: -0.01em; }
+  .kicker {
+    letter-spacing: 0.24em; text-transform: uppercase; font-size: 0.72rem;
+    color: var(--brass); font-weight: 700; margin-bottom: 0.9rem;
+  }
+  p { margin: 0.9rem 0; color: var(--muted-d); }
+  .light p { color: var(--muted-l); }
+  strong { color: inherit; }
+  .reveal { opacity: 0; transform: translateY(26px); transition: opacity 0.8s ease, transform 0.8s ease; }
+  .reveal.on { opacity: 1; transform: none; }
+
+  /* ---------- the stage ---------- */
+  .stage-outer { background: radial-gradient(1200px 600px at 50% -10%, #2d2317 0%, var(--ink) 55%); }
+  .stage {
+    background: linear-gradient(180deg, var(--ink3), var(--ink2));
+    border: 1px solid var(--line-d); border-radius: 20px;
+    padding: 1.6rem 1.6rem 1.9rem;
+    box-shadow: 0 30px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(232,185,106,0.05);
+  }
+  .chordrail { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  .chord {
+    font-family: "Iowan Old Style", Georgia, serif; font-weight: 700;
+    padding: 0.28rem 0.85rem; border-radius: 8px; font-size: 0.98rem;
+    color: var(--muted-d); background: rgba(255,255,255,0.04);
+    border: 1px solid transparent; transition: all 0.25s ease;
+  }
+  .chord.on {
+    color: #1c1610; background: var(--brass-hi); border-color: var(--brass-hi);
+    box-shadow: 0 0 24px var(--glow); transform: translateY(-1px);
+  }
+  #roll { width: 100%; height: 300px; display: block; border-radius: 12px;
+          background: #14110d; border: 1px solid var(--line-d); cursor: pointer; }
+  .transport { display: flex; align-items: center; gap: 1.1rem; margin-top: 1.2rem; flex-wrap: wrap; }
+  #playBtn {
+    width: 64px; height: 64px; border-radius: 50%; border: none; cursor: pointer;
+    background: linear-gradient(160deg, var(--brass-hi), var(--brass-deep));
+    color: #1c1610; font-size: 1.5rem; display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 10px 30px rgba(201,150,74,0.4);
+    transition: transform 0.2s ease, box-shadow 0.2s ease; flex: none;
+  }
+  #playBtn:hover { transform: scale(1.06); box-shadow: 0 14px 40px rgba(201,150,74,0.55); }
+  #playBtn:disabled { opacity: 0.55; cursor: wait; }
+  .abwrap { display: flex; border: 1px solid var(--line-d); border-radius: 999px; overflow: hidden; }
+  .abwrap button {
+    border: none; background: transparent; color: var(--muted-d);
+    padding: 0.6rem 1.1rem; font-size: 0.92rem; font-weight: 650; cursor: pointer;
+    transition: all 0.25s ease;
+  }
+  .abwrap button.on { background: var(--brass-hi); color: #1c1610; }
+  #clock { font-variant-numeric: tabular-nums; color: var(--muted-d); font-size: 0.95rem; min-width: 5.5em; }
+  .stage-cap { margin-top: 0.9rem; font-size: 0.93rem; color: var(--muted-d); }
+  .stage-cap em { color: var(--text-d); font-style: normal; font-weight: 650; }
+
+  /* ---------- the chart card ---------- */
+  .chart-card {
+    margin-top: 2.4rem; background: var(--paper); border-radius: 16px;
+    padding: 1.8rem; color: var(--text-l);
+    box-shadow: 0 24px 60px rgba(0,0,0,0.45);
+  }
+  .chart-card h3 { font-size: 1.25rem; margin-bottom: 0.4rem; }
+  .chart-card .sub { color: var(--muted-l); font-size: 0.92rem; margin-bottom: 1rem; }
+  .scorebox { overflow-x: auto; border: 1px solid var(--line-l); border-radius: 10px; background: #fff; }
+  .scorebox img { display: block; width: 100%; min-width: 640px; height: auto; }
+  .chart-links { display: flex; gap: 0.7rem; flex-wrap: wrap; margin-top: 1.1rem; }
+  .chip {
+    display: inline-block; padding: 0.55rem 1.05rem; border-radius: 8px;
+    border: 1px solid var(--line-l); background: var(--card); color: var(--text-l);
+    font-weight: 650; font-size: 0.9rem; text-decoration: none;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .chip:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(0,0,0,0.1); }
+  .chip.gold { background: var(--brass-deep); border-color: var(--brass-deep); color: #fff; }
+
+  /* ---------- pipeline cards ---------- */
+  .steps-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; margin-top: 2rem; }
+  .step-card {
+    background: rgba(255,255,255,0.025); border: 1px solid var(--line-d);
+    border-radius: 14px; padding: 1.4rem;
+    transition: transform 0.3s ease, border-color 0.3s ease, background 0.3s ease;
+  }
+  .step-card:hover { transform: translateY(-4px); border-color: rgba(232,185,106,0.4); background: rgba(255,255,255,0.045); }
+  .step-card .num { color: var(--brass-hi); font-family: Georgia, serif; font-size: 1.9rem; font-weight: 700; line-height: 1; }
+  .step-card h3 { font-size: 1.06rem; margin: 0.7rem 0 0.4rem; color: var(--text-d); }
+  .step-card p { font-size: 0.92rem; margin: 0; }
+
+  /* ---------- numbers ---------- */
+  .light { background: var(--paper); color: var(--text-l); }
+  .light h2 { color: var(--text-l); }
+  .bignums { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin: 2.2rem 0; }
+  .bignum { background: var(--card); border: 1px solid var(--line-l); border-radius: 14px; padding: 1.5rem 1.3rem; text-align: center; }
+  .bignum .v { font-family: Georgia, serif; font-size: 2.7rem; font-weight: 700; color: var(--brass-deep); line-height: 1.05; font-variant-numeric: tabular-nums; }
+  .bignum .l { color: var(--muted-l); font-size: 0.88rem; margin-top: 0.45rem; }
+  table { border-collapse: collapse; width: 100%; margin: 1.2rem 0; font-size: 0.93rem; }
+  th, td { text-align: left; padding: 0.5rem 0.7rem; border-bottom: 1px solid var(--line-l); }
+  th { font-weight: 650; color: var(--muted-l); font-size: 0.84rem; }
   td.num { font-variant-numeric: tabular-nums; }
-  .steps { counter-reset: step; list-style: none; margin: 1rem 0; }
-  .steps li { counter-increment: step; padding: 0.55rem 0 0.55rem 2.4rem; position: relative; }
-  .steps li::before {
-    content: counter(step); position: absolute; left: 0; top: 0.55rem;
-    width: 1.6rem; height: 1.6rem; border-radius: 50%;
-    background: var(--brass); color: #fff; font-size: 0.85rem; font-weight: 700;
-    display: flex; align-items: center; justify-content: center;
-  }
-  ul.plain { list-style: none; }
-  ul.plain li { padding: 0.35rem 0 0.35rem 1.4rem; position: relative; }
-  ul.plain li::before { content: "—"; position: absolute; left: 0; color: var(--brass); }
-  footer { margin-top: 4rem; padding-top: 1.4rem; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.9rem; }
   .overflow { overflow-x: auto; }
+  .quiet { color: var(--muted-l); font-size: 0.93rem; }
+  .dark .quiet { color: var(--muted-d); }
+
+  /* ---------- honesty ---------- */
+  ul.plain { list-style: none; margin: 1rem 0; }
+  ul.plain li { padding: 0.45rem 0 0.45rem 1.6rem; position: relative; color: var(--muted-d); }
+  ul.plain li::before { content: "—"; position: absolute; left: 0; color: var(--brass); }
+  .light ul.plain li { color: var(--muted-l); }
+
+  /* ---------- get yours ---------- */
+  .twocard { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-top: 1.6rem; }
+  .way {
+    border: 1px solid var(--line-l); border-radius: 14px; padding: 1.5rem; background: var(--card);
+  }
+  .way h3 { font-size: 1.1rem; margin-bottom: 0.5rem; color: var(--text-l); }
+  .way p { font-size: 0.95rem; }
+  code { background: rgba(0,0,0,0.06); border-radius: 5px; padding: 0.1em 0.4em; font-size: 0.9em; }
+
+  footer { padding: 3.5rem 1.5rem 4.5rem; text-align: center; color: var(--muted-d); font-size: 0.92rem; }
+  footer .sig { font-family: Georgia, serif; font-style: italic; color: var(--brass); margin-top: 0.6rem; }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .reveal { opacity: 1; transform: none; transition: none; }
+    .scroll-hint { animation: none; }
+  }
+  @media (max-width: 640px) {
+    #roll { height: 220px; }
+    .wrap { padding: 3.4rem 1.1rem; }
+  }
 </style>
 </head>
 <body>
-<main>
-  <h1>SoloScribe</h1>
-  <p class="lede">Give it a recording of a guitar solo. Get back the solo written
-  out — notation, tab and fingerings in a Guitar Pro file — and an honest,
-  measured account of how much of it to trust.</p>
 
-  <div class="buttons">
-    <a class="btn primary" href="report.html">See a real audit report</a>
-    <a class="btn" href="score.pdf">See a transcribed score (PDF)</a>
-    <a class="btn" href="https://github.com/davidgringras/soloscribe">The code</a>
+<header class="hero">
+  <canvas id="sky" aria-hidden="true"></canvas>
+  <div class="hero-inner">
+    <div class="overline">A machine that reads music — and shows its working</div>
+    <h1>SoloScribe<br><span class="flourish">listens.</span></h1>
+    <p class="lede">A guitar solo goes in. Notation, tab and playable fingerings
+    come out in a Guitar Pro file — with an honest, measured account of how
+    much of it to trust.</p>
+    <div class="hero-cta">
+      <a class="btn primary" href="#stage" id="ctaWatch">▶&nbsp; Watch it read the music</a>
+      <a class="btn" href="https://github.com/davidgringras/soloscribe">The code</a>
+    </div>
   </div>
-  <p class="quiet">Both samples come from the test suite: an eight-bar bebop line
-  over a ii–V–I in F, played over a backing pad, transcribed by the pipeline
-  with no human help. The report is the part most tools don't have — press play
-  and compare the reconstruction against the recording yourself.</p>
+  <div class="scroll-hint" aria-hidden="true">↓</div>
+</header>
 
-  <h2>Why it exists</h2>
-  <p>Automatic transcription tools exist, and on real music they all make
-  mistakes — the honest ones say 80–95% of notes on a clear recording, and none
-  of them tell you <em>which</em> notes they got wrong. You get a chart that is
-  some-percent nonsense with no map of which percent. So the interesting
-  problem was never "audio in, tab out"; it was the question a musician asks
-  next: <em>can't you check your work against the original?</em></p>
-  <p>That question is this tool. After transcribing, SoloScribe plays its own
-  transcription back, lines it up against your recording, scores the agreement
-  bar by bar, and hands you a verdict it is prepared to defend — including
-  "medium" or "low" when that is the truth. Your cleanup time goes exactly
-  where it is needed, with the recording in your ears.</p>
+<section class="stage-outer dark" id="stage">
+  <div class="wrap wide">
+    <div class="kicker reveal">Live — its actual output, untouched</div>
+    <h2 class="reveal">Press play. Watch it read.</h2>
+    <p class="reveal" style="max-width:38em">This is a real transcription by the
+    pipeline — an eight-bar bebop line over a ii–V–I in F, played over a
+    backing pad, no human help. Every glowing bar below is a note the machine
+    wrote down; the brighter the bar, the surer it was. Then flip the switch
+    and hear <em style="color:var(--text-d)">its reading played back</em> —
+    same solo, as the machine understood it.</p>
 
-  <h2>What it does</h2>
-  <ol class="steps">
-    <li>Isolates the guitar from the band (and checks the isolation didn't
-      swallow any notes — if it did, it works from the original instead).</li>
-    <li>Works out the notes, with a second listener double-checking octaves,
-      overtones and vibrato.</li>
-    <li>Finds the beat and writes real notation: swung quavers come out as
-      straight quavers marked <em>Swing</em>, the way proper jazz charts do it;
-      genuine triplets stay triplets.</li>
-    <li>Chooses fingerings the way a player would — staying in position
-      rather than leaping about the neck.</li>
-    <li>Writes a .gp5 file that opens in Guitar Pro or TuxGuitar, with your
-      chord chart printed above the bars.</li>
-    <li>Audits itself and tells you what it is worth.</li>
-  </ol>
+    <div class="stage reveal">
+      <div class="chordrail" id="chordrail" aria-hidden="true"></div>
+      <canvas id="roll" role="img" aria-label="Piano roll of the transcribed solo; notes light up in time with the audio"></canvas>
+      <div class="transport">
+        <button id="playBtn" aria-label="Play or pause the demo">▶</button>
+        <div class="abwrap" role="group" aria-label="Choose what you hear">
+          <button id="abA" class="on">The recording</button>
+          <button id="abB">Its reading</button>
+        </div>
+        <span id="clock">0:00 / 0:00</span>
+      </div>
+      <p class="stage-cap" id="stageCap"><em>The recording</em> — guitar over a
+      backing pad, the audio the machine was given. Click anywhere on the roll to
+      jump.</p>
+    </div>
 
-  <h2>Measured, not promised</h2>
-  <p>On synthesized test solos where every note is known in advance — a swung
-  bebop line, a blues phrase, a syncopated funk line, each with and without a
-  backing band — the full pipeline scores:</p>
-  <div class="overflow">
-  <table>
-    <tr><th>Material</th><th>Clean</th><th>With backing</th><th>Backing + noise</th></tr>
-    <tr><td>Bebop, swung (150 bpm)</td><td class="num">F1&nbsp;0.99</td><td class="num">0.97</td><td class="num">0.97</td></tr>
-    <tr><td>Blues (92 bpm)</td><td class="num">0.98</td><td class="num">0.91</td><td class="num">0.91</td></tr>
-    <tr><td>Funk, 16ths (104 bpm)</td><td class="num">0.96</td><td class="num">0.90</td><td class="num">0.89</td></tr>
-  </table>
+    <div class="chart-card reveal">
+      <h3 class="serif">…and this is the chart it wrote</h3>
+      <p class="sub">Straight from the pipeline: F major, swing marked the way real
+      jazz charts mark it, chords over the bars, triplets bracketed, fingerings
+      chosen. Rendered by MuseScore from the very .gp5 file you can download below.</p>
+      <div class="scorebox"><img src="https://davidgringras.github.io/soloscribe/site/assets/score-1.svg" alt="The transcribed score: eight bars of notation" loading="lazy"></div>
+      <div class="chart-links">
+        <a class="chip gold" href="https://davidgringras.github.io/soloscribe/site/report.html">Open the full audit report</a>
+        <a class="chip" href="https://davidgringras.github.io/soloscribe/site/score.pdf">Score as PDF</a>
+        <a class="chip" href="https://davidgringras.github.io/soloscribe/site/assets/demo.gp5" download>The .gp5 itself</a>
+      </div>
+    </div>
   </div>
-  <p class="quiet">Nine of nine swing-or-straight calls correct. Full
-  methodology, the numbers' limits, and everything it can't do:
-  <a href="https://github.com/davidgringras/soloscribe/blob/main/docs/VALIDATION.md">VALIDATION.md</a>.
-  Real recordings land below synthetic numbers — which is what the per-run
-  report is for.</p>
+</section>
 
-  <h2>What it doesn't do</h2>
-  <ul class="plain">
-    <li>Slides, hammer-ons and fine articulation are yours to add — a
-      five-minute pass in Guitar Pro, not an evening of note-hunting. Bends and
-      vibrato are marked where heard.</li>
-    <li>Wes-style octave doubling needs the "Chords too" setting; in
-      single-note mode the doubling is mistaken for overtone ringing.</li>
-    <li>If the guitar is buried in the mix, it does worse — and the report
-      says so rather than pretending.</li>
-  </ul>
-
-  <h2>Getting your solo transcribed</h2>
-  <div class="card">
-    <p><strong>The easy way:</strong> send David the recording (a clip trimmed
-    to the solo is ideal), the key, a rough tempo, and the chord chart if you
-    have one. Back comes the Guitar Pro file, a PDF of the score, and the
-    audit report.</p>
-    <p><strong>The do-it-yourself way:</strong> it runs on a Mac (Apple
-    Silicon). Clone <a href="https://github.com/davidgringras/soloscribe">the
-    repository</a>, run <code>bin/install.sh</code> once, then double-click
-    <em>Start SoloScribe</em> — the app opens in your browser, and everything
-    happens on your own machine. Nothing is uploaded anywhere.</p>
+<section class="dark">
+  <div class="wrap">
+    <div class="kicker reveal">Why it exists</div>
+    <h2 class="reveal">The question a musician asks next</h2>
+    <p class="reveal">Automatic transcription tools exist, and on real music they
+    all make mistakes — the honest ones say 80–95% of notes on a clear
+    recording, and none of them tell you <em>which</em> notes they got wrong.
+    You get a chart that is some-percent nonsense with no map of which percent.</p>
+    <p class="reveal">So the interesting problem was never "audio in, tab out".
+    It was the question a musician asks next: <strong style="color:var(--text-d)">can't
+    you check your work against the original?</strong> That question is this tool.
+    After transcribing, SoloScribe plays its own transcription back, lines it up
+    against your recording, scores the agreement bar by bar, and hands you a
+    verdict it is prepared to defend — including "medium" or "low" when that is
+    the truth. Your cleanup time goes exactly where it is needed, with the
+    recording in your ears.</p>
   </div>
+</section>
 
-  <h2>If you'd rather use something off the shelf</h2>
-  <p>In fairness: <a href="https://klang.io/guitar2tabs/">Klangio Guitar2Tabs</a>
-  (paid) converts audio to Guitar Pro files in one step, and a free route
-  exists — <a href="https://basicpitch.spotify.com">Spotify's Basic Pitch</a>
-  turns audio into MIDI in your browser, and
-  <a href="https://github.com/helge17/tuxguitar">TuxGuitar</a> (free) opens
-  MIDI and saves as .gp5. What they don't do is jazz-aware rhythm, playable
-  fingerings, or tell you where they went wrong. Try them on your clip;
-  comparing is half the fun.</p>
+<section class="dark">
+  <div class="wrap wide">
+    <div class="kicker reveal">Under the hood</div>
+    <h2 class="reveal">Six listeners, one chart</h2>
+    <div class="steps-grid">
+      <div class="step-card reveal"><div class="num">1</div><h3>Isolate the guitar</h3>
+        <p>A neural stem-separator lifts the guitar out of the band — and checks
+        the isolation didn't swallow notes. If it did, it works from the
+        original instead. In this very demo, it caught exactly that and
+        switched.</p></div>
+      <div class="step-card reveal"><div class="num">2</div><h3>Hear the notes</h3>
+        <p>A transcription model reads pitches; a second, stricter listener
+        cross-checks octaves, strips overtone ghosts and marks vibrato and
+        bends.</p></div>
+      <div class="step-card reveal"><div class="num">3</div><h3>Find the beat</h3>
+        <p>Tempo is tracked through the band's drift. Swung quavers are notated
+        straight and marked <em>Swing</em>, as proper jazz charts do; genuine
+        triplets keep their brackets.</p></div>
+      <div class="step-card reveal"><div class="num">4</div><h3>Choose the fingers</h3>
+        <p>A dynamic-programming engine picks string and fret the way a player
+        would — staying in position rather than leaping about the neck.</p></div>
+      <div class="step-card reveal"><div class="num">5</div><h3>Write the file</h3>
+        <p>A genuine .gp5, byte-for-byte valid — verified by independent readers
+        — with your chord chart printed over the bars.</p></div>
+      <div class="step-card reveal"><div class="num">6</div><h3>Mark its own homework</h3>
+        <p>It resynthesizes the score, aligns it to your recording, and grades
+        itself bar by bar. The grade is honest — it is allowed to say "low".</p></div>
+    </div>
+  </div>
+</section>
 
-  <footer>
-    <p>Built by David with Claude, for a guitarist who asked exactly the right
-    question. Open source, MIT-ish spirit, no accounts, no uploads —
-    <a href="https://github.com/davidgringras/soloscribe">github.com/davidgringras/soloscribe</a>.</p>
-  </footer>
-</main>
+<section class="light">
+  <div class="wrap">
+    <div class="kicker reveal" style="color:var(--brass-deep)">Measured, not promised</div>
+    <h2 class="reveal">The numbers, with their limits attached</h2>
+    <p class="reveal">On synthesized test solos where every note is known in
+    advance — a swung bebop line, a blues phrase, a syncopated funk line, with
+    and without a backing band — the full pipeline scores:</p>
+    <div class="bignums reveal">
+      <div class="bignum"><div class="v" data-count="99">0</div><div class="l">% of notes — best case, clean solo</div></div>
+      <div class="bignum"><div class="v" data-count="89">0</div><div class="l">% of notes — worst case, band + noise</div></div>
+      <div class="bignum"><div class="v" data-count="9">0</div><div class="l">of 9 swing-or-straight calls correct</div></div>
+      <div class="bignum"><div class="v" data-count="98">0</div><div class="l">automated tests, all green</div></div>
+    </div>
+    <div class="overflow reveal">
+    <table>
+      <tr><th>Material</th><th>Clean</th><th>With backing</th><th>Backing + noise</th></tr>
+      <tr><td>Bebop, swung (150 bpm)</td><td class="num">F1&nbsp;0.99</td><td class="num">0.97</td><td class="num">0.97</td></tr>
+      <tr><td>Blues (92 bpm)</td><td class="num">0.98</td><td class="num">0.91</td><td class="num">0.91</td></tr>
+      <tr><td>Funk, 16ths (104 bpm)</td><td class="num">0.96</td><td class="num">0.90</td><td class="num">0.89</td></tr>
+    </table>
+    </div>
+    <p class="quiet reveal">Full methodology and everything it can't do:
+    <a href="https://github.com/davidgringras/soloscribe/blob/main/docs/VALIDATION.md" style="color:var(--brass-deep)">VALIDATION.md</a>.
+    Real recordings land below synthetic numbers — which is what the per-run
+    report is for.</p>
+  </div>
+</section>
+
+<section class="dark">
+  <div class="wrap">
+    <div class="kicker reveal">No overselling</div>
+    <h2 class="reveal">What it won't pretend</h2>
+    <ul class="plain">
+      <li class="reveal">Slides, hammer-ons and fine articulation are yours to
+        add — a five-minute pass in Guitar Pro with the recording in your ears,
+        not an evening of note-hunting. Bends and vibrato are marked where heard.</li>
+      <li class="reveal">Wes-style octave doubling needs the "Chords too"
+        setting; in single-note mode the doubling is mistaken for overtone
+        ringing. This trade-off was measured, priced, and is pinned by a test.</li>
+      <li class="reveal">If the guitar is buried in the mix, it does worse —
+        and the report says so rather than pretending.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="light">
+  <div class="wrap">
+    <div class="kicker reveal" style="color:var(--brass-deep)">Your solo next</div>
+    <h2 class="reveal">Getting yours transcribed</h2>
+    <div class="twocard">
+      <div class="way reveal">
+        <h3>The easy way</h3>
+        <p>Send David the recording (a clip trimmed to the solo is ideal), the
+        key, a rough tempo, and the chord chart if you have one. Back comes the
+        Guitar Pro file, a PDF of the score, and the audit report.</p>
+      </div>
+      <div class="way reveal">
+        <h3>The do-it-yourself way</h3>
+        <p>It runs on a Mac (Apple Silicon). Clone
+        <a href="https://github.com/davidgringras/soloscribe" style="color:var(--brass-deep)">the repository</a>,
+        run <code>bin/install.sh</code> once, then double-click
+        <em>Start&nbsp;SoloScribe</em> — the app opens in your browser and
+        everything happens on your own machine. Nothing is uploaded anywhere.</p>
+      </div>
+    </div>
+    <p class="quiet reveal" style="margin-top:1.6rem">In fairness, off-the-shelf
+    routes exist too: <a href="https://klang.io/guitar2tabs/" style="color:var(--brass-deep)">Klangio Guitar2Tabs</a>
+    (paid) goes audio-to-GuitarPro in one step, and
+    <a href="https://basicpitch.spotify.com" style="color:var(--brass-deep)">Spotify's Basic Pitch</a> (free, in the
+    browser) plus <a href="https://github.com/helge17/tuxguitar" style="color:var(--brass-deep)">TuxGuitar</a> (free)
+    gets you there in two. What they don't do is jazz-aware rhythm, playable
+    fingerings, or tell you where they went wrong. Try them on your clip —
+    comparing is half the fun.</p>
+  </div>
+</section>
+
+<footer class="dark">
+  <p>Open source, no accounts, no uploads —
+  <a href="https://github.com/davidgringras/soloscribe">github.com/davidgringras/soloscribe</a></p>
+  <p class="sig">Built by David with Claude, for a guitarist who asked exactly
+  the right question.</p>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+  const ASSETS = "https://davidgringras.github.io/soloscribe/site/assets/";
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* ---------- scroll reveals ---------- */
+  const io = new IntersectionObserver((es) => {
+    es.forEach((e) => { if (e.isIntersecting) { e.target.classList.add("on"); io.unobserve(e.target); } });
+  }, { threshold: 0.12 });
+  document.querySelectorAll(".reveal").forEach((el, i) => {
+    el.style.transitionDelay = (i % 6) * 0.07 + "s";
+    io.observe(el);
+  });
+
+  /* ---------- animated counters ---------- */
+  const cio = new IntersectionObserver((es) => {
+    es.forEach((e) => {
+      if (!e.isIntersecting) return;
+      cio.unobserve(e.target);
+      const el = e.target, target = +el.dataset.count, t0 = performance.now();
+      (function tick(t) {
+        const k = Math.min(1, (t - t0) / 1200), ease = 1 - Math.pow(1 - k, 3);
+        el.textContent = Math.round(target * ease);
+        if (k < 1) requestAnimationFrame(tick);
+      })(t0);
+    });
+  }, { threshold: 0.6 });
+  document.querySelectorAll("[data-count]").forEach((el) => cio.observe(el));
+
+  /* ---------- hero sky: drifting staff + floating notes ---------- */
+  const sky = document.getElementById("sky"), sctx = sky.getContext("2d");
+  let W = 0, H = 0, DPR = Math.min(2, window.devicePixelRatio || 1);
+  function sizeSky() {
+    W = sky.clientWidth; H = sky.clientHeight;
+    sky.width = W * DPR; sky.height = H * DPR; sctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  sizeSky(); addEventListener("resize", sizeSky);
+  const motes = Array.from({ length: 26 }, () => ({
+    x: Math.random(), y: Math.random(), r: 2 + Math.random() * 3.2,
+    vy: 0.006 + Math.random() * 0.014, ph: Math.random() * Math.PI * 2,
+  }));
+  let skyOn = true;
+  new IntersectionObserver((es) => { skyOn = es[0].isIntersecting; }).observe(sky);
+  function drawSky(t) {
+    requestAnimationFrame(drawSky);
+    if (!skyOn || reduced) return;
+    const s = t / 1000;
+    sctx.clearRect(0, 0, W, H);
+    for (let i = 0; i < 5; i++) {
+      const base = H * (0.30 + i * 0.085);
+      sctx.beginPath();
+      for (let x = 0; x <= W; x += 14) {
+        const y = base + Math.sin(x / 260 + s * 0.35 + i * 1.4) * 7
+                       + Math.sin(x / 90 - s * 0.22 + i) * 2.5;
+        x === 0 ? sctx.moveTo(x, y) : sctx.lineTo(x, y);
+      }
+      sctx.strokeStyle = "rgba(201,150,74," + (0.10 - i * 0.012) + ")";
+      sctx.lineWidth = 1.1; sctx.stroke();
+    }
+    for (const m of motes) {
+      m.y -= m.vy / 60; if (m.y < -0.05) { m.y = 1.05; m.x = Math.random(); }
+      const tw = 0.35 + 0.3 * Math.sin(s * 1.7 + m.ph);
+      sctx.beginPath();
+      sctx.ellipse(m.x * W, m.y * H, m.r * 1.25, m.r, -0.35, 0, Math.PI * 2);
+      sctx.fillStyle = "rgba(232,185,106," + tw * 0.35 + ")"; sctx.fill();
+      sctx.beginPath();
+      sctx.moveTo(m.x * W + m.r * 1.1, m.y * H - m.r * 0.35);
+      sctx.lineTo(m.x * W + m.r * 1.1, m.y * H - m.r * 4.2);
+      sctx.strokeStyle = "rgba(232,185,106," + tw * 0.22 + ")";
+      sctx.lineWidth = 1; sctx.stroke();
+    }
+  }
+  requestAnimationFrame(drawSky);
+
+  /* ---------- the stage ---------- */
+  const roll = document.getElementById("roll"), rctx = roll.getContext("2d");
+  const playBtn = document.getElementById("playBtn");
+  const abA = document.getElementById("abA"), abB = document.getElementById("abB");
+  const clock = document.getElementById("clock"), cap = document.getElementById("stageCap");
+  const rail = document.getElementById("chordrail");
+
+  let DATA = null, DUR = 0, bars = [];
+  let ac = null, bufs = { A: null, B: null }, src = null, gain = null;
+  let mode = "A", playing = false, startCtx = 0, offset = 0, ready = false, loading = false;
+
+  fetch(ASSETS + "demo-notes.json").then((r) => r.json()).then((d) => {
+    DATA = d;
+    const bpb = d.beats_per_bar;
+    for (let i = 0; i + bpb < d.beats.length && i / bpb < d.chords.length; i += bpb)
+      bars.push({ t0: d.beats[i], t1: d.beats[i + bpb], chord: d.chords[i / bpb] || "" });
+    for (const b of bars) {
+      const el = document.createElement("span");
+      el.className = "chord"; el.textContent = b.chord || "·"; rail.appendChild(el);
+    }
+    DUR = Math.max.apply(null, d.notes.map((n) => n.t + n.d)) + 0.8;
+    sizeRoll(); drawRoll(0);
+    clock.textContent = fmt(0) + " / " + fmt(DUR);
+  });
+
+  function sizeRoll() {
+    const w = roll.clientWidth, h = roll.clientHeight;
+    roll.width = w * DPR; roll.height = h * DPR; rctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  addEventListener("resize", () => { sizeRoll(); drawRoll(pos()); });
+
+  const PAD_L = 34, PAD_R = 14, PAD_T = 16, PAD_B = 22;
+  function xOf(t) { return PAD_L + (t / DUR) * (roll.clientWidth - PAD_L - PAD_R); }
+  function drawRoll(now) {
+    if (!DATA) return;
+    const w = roll.clientWidth, h = roll.clientHeight;
+    rctx.clearRect(0, 0, w, h);
+    const lo = Math.min.apply(null, DATA.notes.map((n) => n.p)) - 2;
+    const hi = Math.max.apply(null, DATA.notes.map((n) => n.p)) + 2;
+    const yOf = (p) => PAD_T + (1 - (p - lo) / (hi - lo)) * (h - PAD_T - PAD_B);
+    const nh = Math.max(4, (h - PAD_T - PAD_B) / (hi - lo) * 0.82);
+
+    DATA.beats.forEach((b, i) => {
+      if (b > DUR) return;
+      const isBar = i % DATA.beats_per_bar === 0;
+      rctx.strokeStyle = isBar ? "rgba(232,185,106,0.22)" : "rgba(255,255,255,0.06)";
+      rctx.lineWidth = isBar ? 1.4 : 1;
+      rctx.beginPath(); rctx.moveTo(xOf(b), PAD_T - 6); rctx.lineTo(xOf(b), h - PAD_B + 6); rctx.stroke();
+      if (isBar && i / DATA.beats_per_bar < bars.length) {
+        rctx.fillStyle = "rgba(232,185,106,0.5)"; rctx.font = "11px sans-serif";
+        rctx.fillText(String(i / DATA.beats_per_bar + 1), xOf(b) + 4, PAD_T + 4);
+      }
+    });
+
+    for (const n of DATA.notes) {
+      const x = xOf(n.t), wN = Math.max(5, xOf(n.t + n.d) - x - 1.5), y = yOf(n.p);
+      const sounding = playing && now >= n.t && now <= n.t + n.d;
+      const played = now > n.t + n.d;
+      const alpha = 0.28 + 0.5 * n.c + (played ? 0.12 : 0);
+      if (sounding) {
+        rctx.shadowColor = "rgba(232,185,106,0.9)"; rctx.shadowBlur = 16;
+        rctx.fillStyle = "#ffe9c4";
+      } else {
+        rctx.shadowBlur = 0;
+        rctx.fillStyle = "rgba(201,150,74," + alpha + ")";
+      }
+      rr(rctx, x, y - nh / 2, wN, nh, 3); rctx.fill();
+      rctx.shadowBlur = 0;
+    }
+
+    if (now > 0 || playing) {
+      const x = xOf(Math.min(now, DUR));
+      const g = rctx.createLinearGradient(x - 8, 0, x + 8, 0);
+      g.addColorStop(0, "rgba(232,185,106,0)"); g.addColorStop(0.5, "rgba(232,185,106,0.85)"); g.addColorStop(1, "rgba(232,185,106,0)");
+      rctx.fillStyle = g; rctx.fillRect(x - 8, PAD_T - 8, 16, h - PAD_T - PAD_B + 16);
+      rctx.strokeStyle = "#ffe9c4"; rctx.lineWidth = 1.6;
+      rctx.beginPath(); rctx.moveTo(x, PAD_T - 8); rctx.lineTo(x, h - PAD_B + 8); rctx.stroke();
+    }
+
+    let active = -1;
+    bars.forEach((b, i) => { if (now >= b.t0 && now < b.t1) active = i; });
+    Array.prototype.forEach.call(rail.children, (el, i) =>
+      el.classList.toggle("on", i === active && playing));
+  }
+  function rr(c, x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    c.beginPath();
+    c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r);
+    c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
+  }
+
+  function fmt(s) { s = Math.max(0, s); return Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0"); }
+  function pos() { return playing && ac ? Math.min(DUR, offset + ac.currentTime - startCtx) : offset; }
+
+  async function ensureAudio() {
+    if (ready || loading) return ready;
+    loading = true; playBtn.disabled = true; playBtn.textContent = "…";
+    try {
+      ac = new (window.AudioContext || window.webkitAudioContext)();
+      const parts = await Promise.all(
+        ["demo-original.mp3", "demo-machine.mp3"].map((f) =>
+          fetch(ASSETS + f).then((r) => r.arrayBuffer()).then((ab) => ac.decodeAudioData(ab))
+        )
+      );
+      bufs.A = parts[0]; bufs.B = parts[1]; ready = true;
+    } catch (e) {
+      cap.innerHTML = "The demo audio couldn't load on this connection — the " +
+        "<a href='https://davidgringras.github.io/soloscribe/site/report.html'>full report</a> has the same players.";
+    }
+    playBtn.disabled = false; playBtn.textContent = "▶"; loading = false;
+    return ready;
+  }
+
+  function startAt(off) {
+    stopSrc();
+    src = ac.createBufferSource(); gain = ac.createGain();
+    src.buffer = bufs[mode]; src.connect(gain); gain.connect(ac.destination);
+    gain.gain.setValueAtTime(0.0001, ac.currentTime);
+    gain.gain.exponentialRampToValueAtTime(1, ac.currentTime + 0.03);
+    src.start(0, Math.max(0, off));
+    startCtx = ac.currentTime; offset = off; playing = true;
+    playBtn.textContent = "❚❚";
+    src.onended = () => {
+      if (playing && pos() >= DUR - 0.05) {
+        playing = false; offset = 0; playBtn.textContent = "▶";
+        drawRoll(0); clock.textContent = fmt(0) + " / " + fmt(DUR);
+      }
+    };
+    loop();
+  }
+  function stopSrc() {
+    if (src) {
+      try {
+        gain.gain.setTargetAtTime(0.0001, ac.currentTime, 0.012);
+        src.stop(ac.currentTime + 0.04);
+      } catch (e) {}
+      src = null;
+    }
+  }
+  function pause() { offset = pos(); playing = false; stopSrc(); playBtn.textContent = "▶"; }
+
+  function loop() {
+    if (!playing) return;
+    const t = pos();
+    drawRoll(t);
+    clock.textContent = fmt(t) + " / " + fmt(DUR);
+    if (t < DUR) requestAnimationFrame(loop);
+  }
+
+  playBtn.addEventListener("click", async () => {
+    if (!DATA) return;
+    if (playing) { pause(); return; }
+    if (!(await ensureAudio())) return;
+    if (ac.state === "suspended") await ac.resume();
+    startAt(offset >= DUR - 0.05 ? 0 : offset);
+  });
+
+  function setMode(m) {
+    mode = m;
+    abA.classList.toggle("on", m === "A"); abB.classList.toggle("on", m === "B");
+    cap.innerHTML = m === "A"
+      ? "<em>The recording</em> — guitar over a backing pad, the audio the machine was given. Click anywhere on the roll to jump."
+      : "<em>Its reading</em> — the machine replays exactly what it wrote down, note for note, on the same grid. What you hear matching is the accuracy.";
+    if (playing && ready) startAt(pos());
+  }
+  abA.addEventListener("click", () => setMode("A"));
+  abB.addEventListener("click", () => setMode("B"));
+
+  roll.addEventListener("click", async (e) => {
+    if (!DATA) return;
+    const rect = roll.getBoundingClientRect();
+    const t = Math.max(0, Math.min(DUR,
+      ((e.clientX - rect.left - PAD_L) / (rect.width - PAD_L - PAD_R)) * DUR));
+    if (!(await ensureAudio())) return;
+    if (ac.state === "suspended") await ac.resume();
+    startAt(t);
+  });
+
+  document.getElementById("ctaWatch").addEventListener("click", () => {
+    setTimeout(async () => {
+      if (!playing && DATA && (await ensureAudio())) {
+        if (ac.state === "suspended") await ac.resume();
+        startAt(0);
+      }
+    }, 650);
+  });
+})();
+</script>
 </body>
 </html>
