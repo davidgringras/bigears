@@ -11,7 +11,7 @@ PORT=8746
 URL="http://127.0.0.1:${PORT}"
 PY="$REPO/.venv/bin/python"
 
-printf '\033]0;SoloScribe\007'   # name the Terminal window
+[[ -t 1 ]] && printf '\033]0;SoloScribe\007'   # name the Terminal window
 
 cd "$REPO" || exit 1
 

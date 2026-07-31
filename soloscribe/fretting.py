@@ -177,7 +177,7 @@ def _normalize_range(
     top_string = tuning.index(max(tuning)) + 1
     # Being inside [lowest, highest] is not the same as being playable: a short
     # max_fret leaves gaps between the strings (standard tuning stopped at fret
-    # three cannot sound A♭2 at all), and an unplayable pitch has no candidate
+    # three cannot sound G#2 at all), and an unplayable pitch has no candidate
     # fingering for the search to choose from.
     reachable = {
         open_pitch + capo + fret for open_pitch in tuning for fret in range(max_fret + 1)
