@@ -74,7 +74,6 @@ def run_pipeline(
 
     # Stem separation — transcribe the guitar, not the band.
     stem_path: str | None = None
-    transcribe_src = working
     if separate in ("auto", "on"):
         _report(progress, "Isolating the guitar", 0.08)
         try:
@@ -86,21 +85,61 @@ def run_pipeline(
                 # Stem ≈ mix: the clip is already isolated guitar; separation
                 # could only add artifacts.
                 warnings.append(
-                    "clip already sounds like isolated guitar — used the original"
+                    "the clip already sounds like guitar on its own, so I "
+                    "worked from your original recording"
                 )
-                transcribe_src = working
-            else:
-                transcribe_src = stem_path
+                stem_path = None
         except Exception as exc:  # separation is an enhancement, never a wall
-            warnings.append(f"separation failed ({exc}); transcribed the full mix")
+            warnings.append(
+                "I couldn't isolate the guitar (a technical hiccup on my "
+                f"side: {type(exc).__name__}), so I listened to the full "
+                "recording instead"
+            )
         _report(progress, "Isolating the guitar", 0.35)
 
     _report(progress, "Working out the notes", 0.38)
     from .transcribe import transcribe
 
-    events = transcribe(transcribe_src, mode=mode)
+    # Separation can DESTROY the solo (a stem model that mis-classifies the
+    # lead loses half the notes) — and a self-audit against that stem would
+    # never know, because the missing notes are missing from its reference
+    # too. Guard: transcribe both sources and keep the one whose notes
+    # account for more of the ORIGINAL clip's audible attacks. Found by the
+    # ground-truth validation campaign (stem recall 0.38 vs 0.95, while the
+    # stem-referenced audit read "high fidelity").
+    events: list[NoteEvent] = []
+    stem_lost_notes = False
+    if stem_path is not None:
+        stem_events = transcribe(stem_path, mode=mode)
+        _report(progress, "Working out the notes", 0.50)
+        orig_events = transcribe(working, mode=mode)
+        cov_stem = _onset_coverage_of(y, sr, stem_events)
+        cov_orig = _onset_coverage_of(y, sr, orig_events)
+        if separate == "on" or cov_stem >= cov_orig - 0.08:
+            events = stem_events
+            if cov_stem < cov_orig - 0.08:  # forced stem, but it lost notes
+                warnings.append(
+                    "isolating the guitar seems to have lost some notes "
+                    f"(the isolated track accounts for {cov_stem:.0%} of the "
+                    f"recording's attacks vs {cov_orig:.0%} without) — "
+                    "consider re-running with isolation set to Skip"
+                )
+                stem_lost_notes = True
+        else:
+            events = orig_events
+            warnings.append(
+                "isolation lost some of the guitar, so I worked from your "
+                "original recording instead "
+                f"({cov_orig:.0%} vs {cov_stem:.0%} of attacks accounted for)"
+            )
+            stem_path = None
+    else:
+        events = transcribe(working, mode=mode)
     if not events:
-        warnings.append("no notes detected — check the clip or try separate=off")
+        warnings.append(
+            "I couldn't detect any notes — the clip may be very quiet, or "
+            "try switching 'Isolate the guitar first?' to Skip"
+        )
     _report(progress, "Working out the notes", 0.62)
 
     _report(progress, "Finding the beat", 0.64)
@@ -128,11 +167,25 @@ def run_pipeline(
         from .audit import audit
 
         metrics = audit(score, events, working, stem_path, out_dir, caveats=warnings)
+        # The audit references the stem when one is passed; a stem that lost
+        # notes makes its agreement numbers flattering. Cap the verdict —
+        # missing-from-the-reference is invisible to the audit by
+        # construction, so the pipeline must carry this knowledge in.
+        verdict = metrics.get("verdict") or {}
+        if stem_lost_notes and verdict.get("level") == "high":
+            verdict["level"] = "medium"
+            verdict.setdefault("reasons", []).append(
+                "guitar isolation lost some notes, so the comparison "
+                "flatters the transcription — treat missing notes as likely"
+            )
         report_path = os.path.join(out_dir, "report.html")
         if not os.path.exists(report_path):
             report_path = metrics.get("report_path")
     except Exception as exc:
-        warnings.append(f"audit failed ({exc}); the GP5 was still written")
+        warnings.append(
+            f"I couldn't finish checking my own work ({type(exc).__name__}) "
+            "— the Guitar Pro file was still written"
+        )
     _report(progress, "Checking my work against your recording", 1.0)
 
     return PipelineResult(
@@ -145,6 +198,29 @@ def run_pipeline(
         stem_path=stem_path,
         warnings=warnings,
     )
+
+
+def _onset_coverage_of(y, sr: int, events: list[NoteEvent], tol: float = 0.08) -> float:
+    """Fraction of the clip's detected attacks matched by an event onset."""
+    import librosa
+    import numpy as np
+
+    if not events:
+        return 0.0
+    detected = librosa.onset.onset_detect(y=y, sr=sr, units="time", backtrack=True)
+    if len(detected) == 0:
+        return 1.0
+    starts = np.array(sorted(e.start for e in events))
+    hits = 0
+    for t in detected:
+        i = np.searchsorted(starts, t)
+        near = min(
+            (abs(starts[j] - t) for j in (i - 1, i) if 0 <= j < len(starts)),
+            default=np.inf,
+        )
+        if near <= tol:
+            hits += 1
+    return hits / len(detected)
 
 
 def _safe_name(title: str) -> str:

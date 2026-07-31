@@ -13,3 +13,5 @@ scipy==1.17.1
 soundfile==0.14.0
 torch==2.13.0
 uvicorn==0.52.0
+pytest==9.1.1
+httpx==0.28.1

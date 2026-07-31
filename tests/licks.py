@@ -79,6 +79,10 @@ class Lick:
     notated: list[tuple[float, float, int]] = field(default_factory=list)
     chords: list[str] = field(default_factory=list)  # one symbol per bar
     description: str = ""
+    # Semitones the melody is doubled by. 12 = Wes-style octaves, i.e. every
+    # entry in the source table sounds as two simultaneous notes. 0 = a single
+    # monophonic line.
+    doubling: int = 0
 
     @property
     def bars(self) -> int:
@@ -179,6 +183,9 @@ def _velocity(onset: float, swing: bool, beats_per_bar: int) -> int:
 _ARTICULATION_GAP_BEATS = 0.09
 _ARTICULATION_MAX_FRACTION = 0.30
 
+# How much softer the upper note of an octave sits than the lower one.
+_DOUBLING_VELOCITY_TRIM = 6
+
 
 def _build(
     name: str,
@@ -189,21 +196,30 @@ def _build(
     table: list[tuple[float, float, int]],
     description: str,
     beats_per_bar: int = 4,
+    doubling: int = 0,
 ) -> Lick:
     """Source table (notated) → Lick carrying both notated and performed lists."""
     notated: list[tuple[float, float, int]] = []
     notes: list[tuple[float, float, int, int]] = []
     for onset, dur, pitch in table:
         vel = _velocity(onset, swing, beats_per_bar)
-        # Notated values stay unrounded: they are exact thirds and quarters of
-        # a beat, and rounding them independently makes onset+duration miss the
-        # next onset by ~1e-9, which reads as an overlap that is not there.
-        notated.append((onset, dur, pitch))
         p_on = _swing_pos(onset, swing)
         p_end = _swing_pos(onset + dur, swing)
         nominal = p_end - p_on
         gap = min(_ARTICULATION_GAP_BEATS, _ARTICULATION_MAX_FRACTION * nominal)
-        notes.append((round(p_on, 6), round(nominal - gap, 6), pitch, vel))
+        # Low voice first, then the doubling, so ordering within a simultaneous
+        # group is deterministic. The upper octave sits slightly back: in a
+        # thumb-played octave the higher string speaks a little softer.
+        for offset, vel_trim in ((0, 0), (doubling, _DOUBLING_VELOCITY_TRIM)):
+            # Notated values stay unrounded: they are exact thirds and quarters
+            # of a beat, and rounding them independently makes onset+duration
+            # miss the next onset by ~1e-9, which reads as an overlap that is
+            # not there.
+            notated.append((onset, dur, pitch + offset))
+            notes.append((round(p_on, 6), round(nominal - gap, 6),
+                          pitch + offset, vel - vel_trim))
+            if not doubling:
+                break
     return Lick(
         name=name,
         bpm=bpm,
@@ -214,6 +230,7 @@ def _build(
         notated=notated,
         chords=chords,
         description=description,
+        doubling=doubling,
     )
 
 
@@ -316,8 +333,41 @@ FUNK_E = _build(
     "4 bars of syncopated straight-sixteenth E minor pentatonic",
 )
 
+# 4 bars of Wes-style octave melody over G7: every note of the line sounds
+# twice, an octave apart, played as one gesture. This exists to price a
+# specific trade — a transcriber tuned to suppress octave GHOSTS has no way to
+# tell those from octave DOUBLE-STOPS by pitch alone, so whatever heuristic
+# kills the ghosts is also the thing that can flatten this lick to a single
+# line. It is deliberately kept out of LICKS: octave playing in a monophonic
+# "solo" mode is a known-hard case, and folding it into the F1 bars would
+# assert a capability nobody has claimed.
+_OCTAVES_G_TABLE: list[tuple[float, float, int]] = [
+    # bar 1 — statement, up the G minor pentatonic
+    (0.0, 0.5, 55), (0.5, 0.5, 58), (1.0, 0.5, 60), (1.5, 0.5, 62),
+    (2.0, 1.0, 60), (3.0, 0.5, 58), (3.5, 0.5, 55),
+    # bar 2 — sit on the 9th, then push back up
+    (4.0, 1.5, 57), (5.5, 0.5, 58), (6.0, 0.5, 60), (6.5, 1.5, 58),
+    # bar 3 — descend from the top of the phrase
+    (8.0, 0.5, 62), (8.5, 0.5, 60), (9.0, 0.5, 58), (9.5, 0.5, 57),
+    (10.0, 1.0, 55), (11.0, 0.5, 53), (11.5, 0.5, 55),
+    # bar 4 — climb and land
+    (12.0, 0.5, 58), (12.5, 0.5, 60), (13.0, 1.0, 62), (14.0, 2.0, 55),
+]
+
+OCTAVES_G = _build(
+    "octaves_g", 132.0, "G", True,
+    ["G7", "G7", "G7", "G7"],
+    _OCTAVES_G_TABLE,
+    "4 bars of Wes-style swung octave melody in G — 22 melody notes sounding "
+    "as 44, every one an octave double-stop",
+    doubling=12,
+)
+
+# The three licks the accuracy bars are asserted against.
 LICKS: list[Lick] = [BEBOP_F, BLUES_A, FUNK_E]
-LICKS_BY_NAME: dict[str, Lick] = {lk.name: lk for lk in LICKS}
+# Everything that gets rendered to a fixture, characterization material included.
+ALL_LICKS: list[Lick] = LICKS + [OCTAVES_G]
+LICKS_BY_NAME: dict[str, Lick] = {lk.name: lk for lk in ALL_LICKS}
 
 
 # --------------------------------------------------------------------------
@@ -467,6 +517,7 @@ _PAD_VOICINGS: dict[str, tuple[int, ...]] = {
     "A7":    (45, 52, 57, 67),  # A2  E3  A3  G4   root 5 8 b7  (no 3rd)
     "D7":    (50, 57, 62, 72),  # D3  A3  D4  C5   root 5 8 b7  (no 3rd)
     "Em7":   (40, 47, 55, 62),  # E2  B2  G3  D4   root 5 b3 b7
+    "G7":    (43, 50, 59, 65),  # G2  D3  B3  F4   root 5 3 b7
 }
 
 PAD_DB = -20.0    # pad level relative to the solo, RMS-referenced
@@ -584,7 +635,7 @@ def write_fixtures(sr: int = 22050) -> list[str]:
 
     os.makedirs(FIXTURE_DIR, exist_ok=True)
     paths = []
-    for lick in LICKS:
+    for lick in ALL_LICKS:
         for backing in BACKINGS:
             path = fixture_path(lick, backing)
             sf.write(path, render_lick(lick, sr=sr, backing=backing), sr,
@@ -635,19 +686,34 @@ def check_lick(lick: Lick) -> None:
             f"of notated {n_on} (expected {want})"
         )
 
-    # Tolerance is 1e-6 beats — well under a microsecond at these tempi, so it
-    # cannot hide a real overlap (the smallest deliberate gap here is 0.075
-    # beats) but does absorb float noise in the performed onsets, which are
-    # rounded to 6 decimals for a readable repr.
+    # Notes sharing an onset are a deliberate double-stop, so the non-overlap
+    # rule binds between onset GROUPS rather than between raw notes. Tolerance
+    # is 1e-6 beats — well under a microsecond at these tempi, so it cannot
+    # hide a real overlap (the smallest deliberate gap here is 0.075 beats) but
+    # does absorb float noise in the performed onsets, which are rounded to 6
+    # decimals for a readable repr.
+    expect_voices = 2 if lick.doubling else 1
     for label, seq in (("performed", lick.notes), ("notated", lick.notated)):
-        for i in range(len(seq) - 1):
-            end = seq[i][0] + seq[i][1]
-            nxt = seq[i + 1][0]
-            assert end <= nxt + 1e-6, (
-                f"{lick.name}: {label} note {i} runs to {end} past the next "
-                f"onset at {nxt} — a monophonic line cannot overlap itself"
+        groups: list[list[float]] = []  # [onset, max_end, count]
+        for onset, dur, *_ in seq:
+            if groups and abs(onset - groups[-1][0]) < 1e-9:
+                groups[-1][1] = max(groups[-1][1], onset + dur)
+                groups[-1][2] += 1
+            else:
+                groups.append([onset, onset + dur, 1])
+        for onset, _, count in groups:
+            assert count == expect_voices, (
+                f"{lick.name}: {label} onset {onset} carries {count} notes, "
+                f"expected {expect_voices} (doubling={lick.doubling})"
             )
-            assert nxt > seq[i][0], f"{lick.name}: {label} onsets not increasing at {i}"
+        for i in range(len(groups) - 1):
+            assert groups[i][1] <= groups[i + 1][0] + 1e-6, (
+                f"{lick.name}: {label} group at {groups[i][0]} runs to "
+                f"{groups[i][1]} past the next onset at {groups[i + 1][0]}"
+            )
+            assert groups[i + 1][0] > groups[i][0], (
+                f"{lick.name}: {label} onsets not increasing at {groups[i][0]}"
+            )
 
     for onset, dur, _ in lick.notated:  # raises if off the tick lattice
         _to_ticks(onset)
@@ -711,7 +777,7 @@ def check_render_pitch(sr: int = 22050, tolerance_cents: float = 5.0) -> list[tu
 
 def _self_check() -> None:
     check_swing_map()
-    for lick in LICKS:
+    for lick in ALL_LICKS:
         check_lick(lick)
 
 
@@ -725,7 +791,7 @@ if __name__ == "__main__":
         print(f"  {midi:>4}  {want:>10.3f}  {got:>11.3f}  {cents:>+7.2f} c")
 
     print("\nlicks:")
-    for lick in LICKS:
+    for lick in ALL_LICKS:
         pitches = [p for _, _, p, _ in lick.notes]
         print(
             f"  {lick.name:<9} {lick.bpm:>5.0f} bpm  {lick.bars} bars  "

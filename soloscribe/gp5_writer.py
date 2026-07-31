@@ -211,9 +211,15 @@ def write_gp5(score: Score, path: str) -> list[str]:
             clipped += 1
     verticals = [v for v in verticals if v[1] > 0]
     if truncated:
-        warnings.append(f"{truncated} chord group(s) had unequal note lengths; shortened to match")
+        warnings.append(
+            f"in {truncated} place(s), notes struck together rang for different "
+            "lengths — I shortened them to match so the notation stays readable"
+        )
     if clipped:
-        warnings.append(f"{clipped} overlapping note(s) clipped at the next onset")
+        warnings.append(
+            f"{clipped} note(s) rang into the next note — I trimmed them so "
+            "the line reads cleanly"
+        )
 
     # Emit measure by measure: notes as tie chains, gaps as rests.
     def emit(measure_idx: int, chunk_pos: int, chunk_len: int, group: list[QNote] | None, tie: bool) -> bool:
