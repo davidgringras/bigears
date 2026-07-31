@@ -29,6 +29,11 @@ On test phrases where every note is known, it currently gets 90–99% of notes
 right, backing band included. A real recording will be somewhat below that —
 the report will tell you exactly how far.
 
+There's a page you can look at now — the whole thing explained, with a real
+example you can listen to (press play on the report and compare its
+reconstruction against the recording):
+https://davidgringras.github.io/soloscribe/
+
 Send me the clip (the 1.5-minute solo you mentioned), the key, the tempo if
 you know it, and a photo of the chart, and I'll run it and send you back the
 .gp5, a PDF of the notation, and the report. If it embarrasses itself on
