@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SoloScribe — guitar solos, written out honestly</title>
+<meta name="description" content="Give it a recording of a guitar solo. Get back a Guitar Pro file — and an honest, measured account of how much of it to trust.">
+<style>
+  :root {
+    --paper: #f7f2ea;
+    --card: #fdfbf7;
+    --ink: #2b2620;
+    --muted: #6f665a;
+    --brass: #a07430;
+    --brass-deep: #7d5a22;
+    --line: #e4dccd;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #211d18;
+      --card: #2a251f;
+      --ink: #ece5d8;
+      --muted: #a89c8a;
+      --brass: #c9964a;
+      --brass-deep: #e0b06a;
+      --line: #3a332a;
+    }
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--paper); color: var(--ink);
+    font: 17px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 41rem; margin: 0 auto; padding: 4rem 1.4rem 5rem; }
+  h1, h2 { font-family: "Iowan Old Style", "Palatino", Georgia, serif; font-weight: 600; }
+  h1 { font-size: 2.6rem; line-height: 1.15; letter-spacing: -0.01em; }
+  h2 { font-size: 1.45rem; margin: 3rem 0 0.9rem; }
+  p { margin: 0.85rem 0; }
+  .lede { font-size: 1.18rem; color: var(--muted); margin-top: 1rem; }
+  a { color: var(--brass-deep); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  .buttons { display: flex; gap: 0.8rem; flex-wrap: wrap; margin: 1.8rem 0 0.4rem; }
+  .btn {
+    display: inline-block; padding: 0.72rem 1.25rem; border-radius: 8px;
+    text-decoration: none; font-weight: 600; font-size: 0.98rem;
+    border: 1px solid var(--line); background: var(--card); color: var(--ink);
+  }
+  .btn.primary { background: var(--brass); border-color: var(--brass); color: #fff; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 1.4rem 1.5rem; margin: 1.2rem 0;
+  }
+  .quiet { color: var(--muted); font-size: 0.95rem; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: 0.92rem; }
+  th, td { text-align: left; padding: 0.45rem 0.7rem; border-bottom: 1px solid var(--line); }
+  th { font-weight: 600; color: var(--muted); font-size: 0.85rem; }
+  td.num { font-variant-numeric: tabular-nums; }
+  .steps { counter-reset: step; list-style: none; margin: 1rem 0; }
+  .steps li { counter-increment: step; padding: 0.55rem 0 0.55rem 2.4rem; position: relative; }
+  .steps li::before {
+    content: counter(step); position: absolute; left: 0; top: 0.55rem;
+    width: 1.6rem; height: 1.6rem; border-radius: 50%;
+    background: var(--brass); color: #fff; font-size: 0.85rem; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  ul.plain { list-style: none; }
+  ul.plain li { padding: 0.35rem 0 0.35rem 1.4rem; position: relative; }
+  ul.plain li::before { content: "—"; position: absolute; left: 0; color: var(--brass); }
+  footer { margin-top: 4rem; padding-top: 1.4rem; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.9rem; }
+  .overflow { overflow-x: auto; }
+</style>
+</head>
+<body>
+<main>
+  <h1>SoloScribe</h1>
+  <p class="lede">Give it a recording of a guitar solo. Get back the solo written
+  out — notation, tab and fingerings in a Guitar Pro file — and an honest,
+  measured account of how much of it to trust.</p>
+
+  <div class="buttons">
+    <a class="btn primary" href="https://cdn.jsdelivr.net/gh/davidgringras/soloscribe@main/site/report.html">See a real audit report</a>
+    <a class="btn" href="https://cdn.jsdelivr.net/gh/davidgringras/soloscribe@main/site/score.pdf">See a transcribed score (PDF)</a>
+    <a class="btn" href="https://github.com/davidgringras/soloscribe">The code</a>
+  </div>
+  <p class="quiet">Both samples come from the test suite: an eight-bar bebop line
+  over a ii–V–I in F, played over a backing pad, transcribed by the pipeline
+  with no human help. The report is the part most tools don't have — press play
+  and compare the reconstruction against the recording yourself.</p>
+
+  <h2>Why it exists</h2>
+  <p>Automatic transcription tools exist, and on real music they all make
+  mistakes — the honest ones say 80–95% of notes on a clear recording, and none
+  of them tell you <em>which</em> notes they got wrong. You get a chart that is
+  some-percent nonsense with no map of which percent. So the interesting
+  problem was never "audio in, tab out"; it was the question a musician asks
+  next: <em>can't you check your work against the original?</em></p>
+  <p>That question is this tool. After transcribing, SoloScribe plays its own
+  transcription back, lines it up against your recording, scores the agreement
+  bar by bar, and hands you a verdict it is prepared to defend — including
+  "medium" or "low" when that is the truth. Your cleanup time goes exactly
+  where it is needed, with the recording in your ears.</p>
+
+  <h2>What it does</h2>
+  <ol class="steps">
+    <li>Isolates the guitar from the band (and checks the isolation didn't
+      swallow any notes — if it did, it works from the original instead).</li>
+    <li>Works out the notes, with a second listener double-checking octaves,
+      overtones and vibrato.</li>
+    <li>Finds the beat and writes real notation: swung quavers come out as
+      straight quavers marked <em>Swing</em>, the way proper jazz charts do it;
+      genuine triplets stay triplets.</li>
+    <li>Chooses fingerings the way a player would — staying in position
+      rather than leaping about the neck.</li>
+    <li>Writes a .gp5 file that opens in Guitar Pro or TuxGuitar, with your
+      chord chart printed above the bars.</li>
+    <li>Audits itself and tells you what it is worth.</li>
+  </ol>
+
+  <h2>Measured, not promised</h2>
+  <p>On synthesized test solos where every note is known in advance — a swung
+  bebop line, a blues phrase, a syncopated funk line, each with and without a
+  backing band — the full pipeline scores:</p>
+  <div class="overflow">
+  <table>
+    <tr><th>Material</th><th>Clean</th><th>With backing</th><th>Backing + noise</th></tr>
+    <tr><td>Bebop, swung (150 bpm)</td><td class="num">F1&nbsp;0.99</td><td class="num">0.97</td><td class="num">0.97</td></tr>
+    <tr><td>Blues (92 bpm)</td><td class="num">0.98</td><td class="num">0.91</td><td class="num">0.91</td></tr>
+    <tr><td>Funk, 16ths (104 bpm)</td><td class="num">0.96</td><td class="num">0.90</td><td class="num">0.89</td></tr>
+  </table>
+  </div>
+  <p class="quiet">Nine of nine swing-or-straight calls correct. Full
+  methodology, the numbers' limits, and everything it can't do:
+  <a href="https://github.com/davidgringras/soloscribe/blob/main/docs/VALIDATION.md">VALIDATION.md</a>.
+  Real recordings land below synthetic numbers — which is what the per-run
+  report is for.</p>
+
+  <h2>What it doesn't do</h2>
+  <ul class="plain">
+    <li>Slides, hammer-ons and fine articulation are yours to add — a
+      five-minute pass in Guitar Pro, not an evening of note-hunting. Bends and
+      vibrato are marked where heard.</li>
+    <li>Wes-style octave doubling needs the "Chords too" setting; in
+      single-note mode the doubling is mistaken for overtone ringing.</li>
+    <li>If the guitar is buried in the mix, it does worse — and the report
+      says so rather than pretending.</li>
+  </ul>
+
+  <h2>Getting your solo transcribed</h2>
+  <div class="card">
+    <p><strong>The easy way:</strong> send David the recording (a clip trimmed
+    to the solo is ideal), the key, a rough tempo, and the chord chart if you
+    have one. Back comes the Guitar Pro file, a PDF of the score, and the
+    audit report.</p>
+    <p><strong>The do-it-yourself way:</strong> it runs on a Mac (Apple
+    Silicon). Clone <a href="https://github.com/davidgringras/soloscribe">the
+    repository</a>, run <code>bin/install.sh</code> once, then double-click
+    <em>Start SoloScribe</em> — the app opens in your browser, and everything
+    happens on your own machine. Nothing is uploaded anywhere.</p>
+  </div>
+
+  <h2>If you'd rather use something off the shelf</h2>
+  <p>In fairness: <a href="https://klang.io/guitar2tabs/">Klangio Guitar2Tabs</a>
+  (paid) converts audio to Guitar Pro files in one step, and a free route
+  exists — <a href="https://basicpitch.spotify.com">Spotify's Basic Pitch</a>
+  turns audio into MIDI in your browser, and
+  <a href="https://github.com/helge17/tuxguitar">TuxGuitar</a> (free) opens
+  MIDI and saves as .gp5. What they don't do is jazz-aware rhythm, playable
+  fingerings, or tell you where they went wrong. Try them on your clip;
+  comparing is half the fun.</p>
+
+  <footer>
+    <p>Built by David with Claude, for a guitarist who asked exactly the right
+    question. Open source, MIT-ish spirit, no accounts, no uploads —
+    <a href="https://github.com/davidgringras/soloscribe">github.com/davidgringras/soloscribe</a>.</p>
+  </footer>
+</main>
+</body>
+</html>
