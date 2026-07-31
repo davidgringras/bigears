@@ -150,12 +150,19 @@ def merge_adjacent_events(
     decay-split note (found by the transcribe module's tests).
 
     Gap time alone cannot separate a decay split (~40 ms dip) from a genuine
-    repeated fast note (~30 ms articulation gap at 150 bpm 16ths) — measured
-    by the E2E harness as 3 of its 4 recall misses. The discriminator is
-    amplitude: a decay continuation is the quiet tail of a dying note, a
-    re-picked note has a fresh attack. Gaps ≤ 15 ms (about one analysis
-    frame) merge unconditionally; longer gaps only merge when the second
-    fragment is clearly quieter than the note's peak so far.
+    repeated fast note in the 15–60 ms band, so that band gets an amplitude
+    gate: a decay continuation is the quiet tail of a dying note, a re-picked
+    note has a fresh attack. Gaps ≤ 15 ms (about one analysis frame) merge
+    unconditionally.
+
+    SCOPE, measured (do not overclaim this gate): the E2E harness's residual
+    recall misses are repeated notes whose OBSERVED gap is 0.000 s — the
+    transcriber receives them already contiguous — which this gate therefore
+    cannot address (they take the unconditional path). An earlier version of
+    this note credited the gate with those misses; that conflated the licks'
+    NOTATED gaps (30–49 ms) with the emitted signal, where the renderer's
+    ring-down closes them. Splitting 0-gap fusions needs onset re-detection,
+    which was measured (0.03 discrimination margin, n=9) and declined.
     """
     if not events:
         return []

@@ -359,6 +359,19 @@ def _bad(message: str, status: int = 400) -> HTTPException:
     return HTTPException(status_code=status, detail=message)
 
 
+def _parse_capo(raw: str) -> int:
+    text = (raw or "").strip()
+    if not text:
+        return 0
+    try:
+        value = int(float(text))
+    except ValueError:
+        raise _bad("I could not read the capo fret as a number. Leave it blank for no capo.")
+    if not 0 <= value <= 12:
+        raise _bad("The capo needs to be between fret 0 and fret 12.")
+    return value
+
+
 def _opt_float(raw: str, label: str, *, minimum: float | None = None) -> float | None:
     text = (raw or "").strip().replace(",", ".")
     if not text:
@@ -437,6 +450,7 @@ async def create_job(
     downbeat: str = Form(""),
     start: str = Form(""),
     end: str = Form(""),
+    capo: str = Form(""),
 ) -> dict:
     name = (file.filename or "").strip()
     suffix = Path(name).suffix.lower()
@@ -473,6 +487,7 @@ async def create_job(
         "downbeat": _opt_float(downbeat, "the first downbeat", minimum=0.0),
         "start": _opt_float(start, "the start time", minimum=0.0),
         "end": _opt_float(end, "the end time", minimum=0.0),
+        "capo": _parse_capo(capo),
     }
     if options["start"] is not None and options["end"] is not None:
         if options["end"] <= options["start"]:

@@ -375,6 +375,17 @@ LICKS_BY_NAME: dict[str, Lick] = {lk.name: lk for lk in ALL_LICKS}
 # --------------------------------------------------------------------------
 
 
+# A note on reading these two lists by hand, learned by getting it wrong.
+# `notes` carries PERFORMED durations (articulation-shortened: a funk sixteenth
+# is 0.175 beats, not 0.25) and `notated` carries written values. Confusing them
+# fails loudly in three of the four ways you can do it — `_to_ticks` rejects a
+# performed duration because it is off the tick lattice, and the 3- and 4-tuples
+# will not unpack into each other. The fourth way is silent: indexing `[1]` on
+# either list returns a plausible float. That one has no structural defence at
+# this data shape, so route anything you intend as notated through
+# `lick_notated_ticks`, which does have the shape gate.
+
+
 def lick_events(lick: Lick) -> list[NoteEvent]:
     """Performed ground truth as NoteEvents in seconds — the mir_eval reference."""
     spb = lick.seconds_per_beat

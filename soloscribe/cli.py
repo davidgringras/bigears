@@ -29,6 +29,7 @@ def main(argv: list[str] | None = None) -> int:
                    help="seconds where bar 1 beat 1 falls")
     p.add_argument("--start", type=float, default=None, help="trim start (seconds)")
     p.add_argument("--end", type=float, default=None, help="trim end (seconds)")
+    p.add_argument("--capo", type=int, default=0, help="capo fret (0-12)")
     args = p.parse_args(argv)
 
     from .pipeline import run_pipeline
@@ -47,6 +48,7 @@ def main(argv: list[str] | None = None) -> int:
         downbeat=args.downbeat,
         start=args.start,
         end=args.end,
+        capo=args.capo,
     )
     print(f"\nGP5:    {result.gp5_path}")
     if result.report_path:

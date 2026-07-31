@@ -52,8 +52,8 @@ the app. Then:
   Guitar Pro with the recording in your ears, not an evening of note-hunting.
 - If the band is loud and the guitar buried, it will do worse, and the
   report will say so rather than pretend.
-- It assumes standard tuning. A capo can be set on the command line but not
-  yet in the app.
+- It assumes standard tuning. If the recording used a capo, set the fret
+  under "If you know a little more" and the tab comes out relative to it.
 - If the solo has Wes Montgomery-style octave passages, set "What am I
   listening for?" to **Chords too** — in single-note mode the octave doubling
   gets mistaken for overtone ringing and stripped out; in Chords-too mode

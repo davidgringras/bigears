@@ -185,7 +185,7 @@ def test_form_fields_reach_run_pipeline_as_contract_kwargs(client, monkeypatch):
     created = _post(client, data={
         "key": "Bb", "bpm": "138.5", "beats_per_bar": "3", "swing": "on",
         "separate": "off", "mode": "poly", "downbeat": "1.25",
-        "start": "4", "end": "40",
+        "start": "4", "end": "40", "capo": "3",
     })
     _settle(client, created.json()["job_id"])
 
@@ -201,6 +201,7 @@ def test_form_fields_reach_run_pipeline_as_contract_kwargs(client, monkeypatch):
         "downbeat": 1.25,
         "start": 4.0,
         "end": 40.0,
+        "capo": 3,
     }
 
 

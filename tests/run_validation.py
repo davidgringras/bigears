@@ -29,7 +29,7 @@ def score_vs_truth(score, lick):
 
 rows = []
 for lick in LICKS:
-    for backing in ("none", "pad"):
+    for backing in ("none", "pad", "pad_noise"):
         random.seed(20260731); np.random.seed(20260731)
         fx = f"tests/fixtures/{lick.name}__{backing}.wav"
         out = f"output/validation/{lick.name}_{backing}"

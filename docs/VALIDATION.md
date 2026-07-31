@@ -19,14 +19,18 @@ Note-level F1 against ground truth, onset tolerance 100 ms, pitch-matched
 |---|---|---|---|---|---|---|
 | bebop_f | 8 bars, swung 8ths + triplets, 150 bpm | none | 1.000 | 0.983 | 0.991 | correct |
 | bebop_f | | chord pad | 0.966 | 0.983 | 0.974 | correct |
+| bebop_f | | pad + noise | 0.950 | 0.983 | 0.966 | correct |
 | blues_a | 4 bars, straight 8ths/16ths + qtr-triplet, 92 bpm | none | 1.000 | 0.964 | 0.982 | correct |
 | blues_a | | chord pad | 0.926 | 0.893 | 0.909 | correct |
+| blues_a | | pad + noise | 0.897 | 0.929 | 0.912 | correct |
 | funk_e | 4 bars, syncopated straight 16ths, 104 bpm | none | 0.974 | 0.950 | 0.962 | correct |
 | funk_e | | chord pad | 0.881 | 0.925 | 0.902 | correct |
+| funk_e | | pad + noise | 0.878 | 0.900 | 0.889 | correct |
 
-Swing detection called all six cases correctly, including refusing to stamp
+Swing detection called all nine cases correctly, including refusing to stamp
 "swing" on the straight funk line whose 0.75-position sixteenths would fool a
-naive offbeat-median test.
+naive offbeat-median test. Added pink noise costs only a few F1 points over
+the pad alone.
 
 Quantization in isolation (ground-truth events, perfect grid): 126/126 onsets
 exact across all three licks, including triplet figures inside swing context.
@@ -72,7 +76,10 @@ true recall was 0.38. Two guards now exist:
   contours (scores are pessimistic on heavily bent phrases, and say so).
 - Time signatures beyond 4/4 and 3/4 are best-effort (6/8 is handled as six
   beats per bar).
-- MPS acceleration is verified for the test separation model only; the
-  production models fall back to CPU on any MPS failure (slower, not wrong).
+- MPS acceleration is verified for the production separation model: a direct
+  probe ran htdemucs_6s (the HTDemucs transformer) on MPS with finite 6-source
+  output, and the validation runs exercised its "guitar" stem by name (the
+  rel-RMS fallback lines in the logs are that stem being read and measured).
+  A CPU fallback remains for any MPS failure (slower, not wrong).
 - Separation is seeded for reproducibility in validation runs; interactive
   runs may vary ±1 note between repeats (demucs draws a random shift).

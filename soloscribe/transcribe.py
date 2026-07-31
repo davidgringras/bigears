@@ -327,27 +327,6 @@ def _detect_vibrato(contour: _Contour, ev: NoteEvent) -> bool:
     return VIB_RATE_LO <= peak_hz <= VIB_RATE_HI
 
 
-def _merge_by_pitch(events: list[NoteEvent]) -> list[NoteEvent]:
-    """`merge_adjacent_events` applied one pitch at a time.
-
-    The helper walks a list sorted by (start, pitch) and only ever compares
-    against the event it last emitted, so a note at some other pitch sorting
-    between two fragments of a decay-split note blocks the merge that exists to
-    repair it — a G3 split at 1.0s stays split whenever anything else is
-    sounding across the seam. Grouping by pitch first is exactly equivalent for
-    the default `max_pitch_diff=0` (the helper never merges across pitches
-    there) and removes the ordering sensitivity; it is not equivalent for a
-    nonzero max_pitch_diff, which this module does not use.
-    """
-    by_pitch: dict[int, list[NoteEvent]] = {}
-    for ev in events:
-        by_pitch.setdefault(ev.pitch, []).append(ev)
-    merged: list[NoteEvent] = []
-    for group in by_pitch.values():
-        merged.extend(merge_adjacent_events(group))
-    return sorted(merged, key=lambda e: (e.start, e.pitch))
-
-
 def _dedup_overlaps(events: list[NoteEvent]) -> list[NoteEvent]:
     """Fold same-pitch events that overlap in time into one.
 
@@ -512,7 +491,7 @@ def transcribe(
         )
 
     events = _events_from_predictions(note_events, min_pitch, max_pitch)
-    events = _merge_by_pitch(events)
+    events = merge_adjacent_events(events)
     if mode == "solo":
         events = _refine_solo(events, audio_path, stats=stats)
         # Octave relabelling can carry a note out of the requested window: with
@@ -521,5 +500,5 @@ def transcribe(
         # floor. The note is real but out of range, so the range wins — the
         # alternative is emitting it at a pitch the contour contradicts.
         events = [e for e in events if min_pitch <= e.pitch <= max_pitch]
-        events = _merge_by_pitch(events)
+        events = merge_adjacent_events(events)
     return sorted(events, key=lambda e: (e.start, e.pitch))

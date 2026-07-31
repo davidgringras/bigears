@@ -107,6 +107,15 @@ def test_decompose_invariants():
         assert sum(c for _, c in chunks) == 320
 
 
+def test_capo_written_as_track_offset(tmp_path):
+    q = [QNote(0, 960, 62, string=2, fret=1)]  # D4 = string 2 open(59)+capo2+fret1
+    song, warnings = _roundtrip(_score(q, capo=2, chords=[]), tmp_path)
+    assert song.tracks[0].offset == 2
+    note = song.tracks[0].measures[0].voices[0].beats[0].notes[0]
+    assert (note.string, note.value) == (2, 1)  # fret stays capo-relative
+    assert not [w for w in warnings if "misrender" in w]
+
+
 def test_waltz_time(tmp_path):
     q = [QNote(i * 960, 960, 60 + i, string=2, fret=1 + i) for i in range(6)]
     song, warnings = _roundtrip(_score(q, beats_per_bar=3, chords=[]), tmp_path)

@@ -47,6 +47,7 @@ def run_pipeline(
     downbeat: float | None = None,   # seconds where beat 1 of bar 1 falls
     start: float | None = None,      # trim: analyze only [start, end] seconds
     end: float | None = None,
+    capo: int = 0,                   # frets; fingering and tab become capo-relative
     progress: ProgressFn | None = None,
 ) -> PipelineResult:
     import librosa
@@ -154,6 +155,7 @@ def run_pipeline(
     score = quantize(
         events, grid, swing=swing, key=key, chords=chord_list, title=title,
     )
+    score.capo = max(0, min(12, int(capo)))
     fret_warnings = assign_fretting(score.qnotes, tuning=score.tuning, capo=score.capo)
     warnings.extend(fret_warnings)
     gp5_path = os.path.join(out_dir, _safe_name(title) + ".gp5")

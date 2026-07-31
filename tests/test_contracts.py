@@ -44,7 +44,7 @@ PINNED_SIGNATURES = {
     render_score: ["score", "sr", "use_tempo_map"],
     run_pipeline: ["audio_path", "out_dir", "key", "bpm", "beats_per_bar", "swing",
                    "separate", "mode", "chords", "title", "downbeat", "start", "end",
-                   "progress"],
+                   "capo", "progress"],
 }
 
 
