@@ -56,8 +56,17 @@ true recall was 0.38. Two guards now exist:
 - Demucs' 6-stem model did not recognize the synthetic timbre as "guitar"
   (rel-RMS fallback to the 4-stem model fired). Its behavior on real guitar
   is untested here, in either direction.
-- No ground-truth lick contains octave double-stops; the transcriber's
-  octave-ghost filter is untested against them (flagged by its author).
+- **Octave double-stops (Wes-style octave melodies) collapse to single notes
+  in solo mode** — measured on a dedicated octave-melody fixture: doubling
+  recall 0.000, melody recall 1.000 (the line survives; the texture doesn't).
+  This is a deliberate trade: the same amplitude filter that removes harmonic
+  ghosts (funk precision 0.826 → 0.974) cannot distinguish them from played
+  octaves, which reach the transcriber at ghost-like relative amplitude
+  (0.52× measured at equal played gain), and duration distributions overlap
+  with the ghost median higher. **The workaround ships in the product:
+  "Chords too" (poly) mode recovers 0.682 of octave doublings** (measured,
+  same fixture) at some cost in single-line cleanliness. A test pins the
+  trade so it cannot move silently.
 - Bends and vibrato are detected and written to the GP5, but no ground-truth
   lick exercises them end-to-end; the audit's resynthesis ignores bend
   contours (scores are pessimistic on heavily bent phrases, and say so).

@@ -17,19 +17,34 @@ anyone "simplifies" the guards around it:
     *correct* note down an octave on one of the most common shapes in the
     idiom. Octave relabelling is consequently refused on any span that has a
     concurrent note and nothing at the target pitch (`_refine_solo`).
-  * OCTAVE DOUBLE-STOPS ARE NOT PRESERVED, and GHOST_AMP_RATIO=0.85 makes that
-    deliberate rather than incidental. An octave double-stop of comparable
-    played loudness does not reach basic-pitch as comparable *activation*: on a
-    synthetic 52+64 pluck pair at equal gain the upper note came back at 0.52×
-    the lower's, already under the old 0.60 ratio, so the pair collapsed to the
-    lower note even before the sweep. Raising the ratio therefore gives up a
-    capability that measurably did not work in exchange for ghost rejection
-    that measurably does. The cost is real for Wes-style octave playing and the
-    sweep is blind to it — none of the ground-truth licks contain an octave
-    double-stop, so "recall was flat" is a statement about material that has
-    none. If that repertoire matters, the discriminator to reach for is
-    duration (harmonic ghosts ran 90-165 ms against hosts of 185-230 ms), not
-    a further amplitude tweak.
+  * OCTAVE DOUBLE-STOPS ARE NOT PRESERVED. GHOST_AMP_RATIO=0.85 buys ghost
+    rejection by giving them up entirely, and that is a priced trade rather
+    than a free win. Measured over a 22-doubling Wes-style octave lick
+    (tests/fixtures/octaves_g), upper-voice recall runs 0.455 at ratio 0.60,
+    0.227 at 0.70, 0.136 at 0.75, 0.045 at 0.80 and 0.000 at 0.85 — strictly
+    monotonic, no plateau — against funk_e precision of 0.826 → 0.974 across
+    the same span. Melody (lower voice) recall is 1.000 at every ratio, so the
+    loss is confined to the doubling: the line survives, its octave texture
+    does not. An earlier version of this note claimed the capability was
+    already dead based on ONE synthetic pluck pair that happened to land at a
+    0.52 ratio; across 22 real doublings the distribution straddles 0.60, so
+    that generalization from n=1 was simply wrong. To transcribe octave
+    repertoire, LOWER GHOST_AMP_RATIO (0.60 restores 0.455 upper-voice recall;
+    the constant is read at call time, so assigning to it is enough) — lower
+    keeps more concurrent octave notes as double-stops, higher relabels more of
+    them as harmonics. mode="poly" preserves every doubling but disables the
+    whole refinement, ghost rejection included, so it is the blunter option.
+    The default is a judgment call, not a measured optimum: ghosts contaminate
+    the line the player reads, doublings only thin a texture while melody
+    recall stays 1.000, and strong harmonics are far commoner in this
+    repertoire than octave passages. There is no knee in the frontier where
+    both are acceptable, which is the real finding — amplitude ratio is one
+    knob asked to separate two populations that overlap on it.
+    Duration is NOT the discriminator to reach for: measured at ratio 0.60,
+    real doublings ran 70-267 ms (median 104) against spurious ghosts at
+    81-163 ms (median 122), overlapping heavily with the ghost median the
+    HIGHER of the two. The useful comparison is ghost-vs-legitimate-double-
+    stop, not ghost-vs-host, and on that axis duration carries no signal.
 
 Verified against the installed basic-pitch 0.4.0 source:
 

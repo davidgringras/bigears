@@ -54,6 +54,10 @@ the app. Then:
   report will say so rather than pretend.
 - It assumes standard tuning. A capo can be set on the command line but not
   yet in the app.
+- If the solo has Wes Montgomery-style octave passages, set "What am I
+  listening for?" to **Chords too** — in single-note mode the octave doubling
+  gets mistaken for overtone ringing and stripped out; in Chords-too mode
+  most of it survives.
 
 ## If something goes wrong
 
