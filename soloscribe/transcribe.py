@@ -370,8 +370,21 @@ def _dedup_overlaps(events: list[NoteEvent]) -> list[NoteEvent]:
     return sorted(out, key=lambda e: (e.start, e.pitch))
 
 
-def _refine_solo(events: list[NoteEvent], audio_path: str) -> list[NoteEvent]:
-    """Use a monophonic f0 contour to fix octaves, drop ghosts, mark vibrato."""
+def _refine_solo(
+    events: list[NoteEvent], audio_path: str, stats: dict | None = None
+) -> list[NoteEvent]:
+    """Use a monophonic f0 contour to fix octaves, drop ghosts, mark vibrato.
+
+    When `stats` is a dict, records (onset, amp_ratio_to_host) of events
+    folded onto a host one octave away under "folded_octaves". MEASURED DEAD
+    END, kept as instrumentation only: fold statistics do NOT discriminate a
+    suppressed Wes-style octave passage from a harmonic-rich single-note line
+    (fold-ratio medians 0.65 on the octave fixture vs 0.63 on funk_e, counts
+    15 vs 13), so no per-run "octaves suspected" warning is derivable here —
+    it would fire on most straight lines. The user-facing answer is the
+    unconditional solo-mode caveat in pipeline.py; do not rebuild the
+    warning without a discriminator measured to actually separate.
+    """
     if not events:
         return events
     contour = _pyin_contour(audio_path)
@@ -412,6 +425,10 @@ def _refine_solo(events: list[NoteEvent], audio_path: str) -> list[NoteEvent]:
                 if amps[i] >= GHOST_AMP_RATIO * amps[host]:
                     ev.confidence *= 0.7      # octave double-stop, both real
                 else:
+                    if stats is not None and abs(shift) == 12:
+                        stats.setdefault("folded_octaves", []).append(
+                            (ev.start, amps[i] / max(amps[host], 1e-6))
+                        )
                     ev.pitch += shift         # harmonic; _dedup_overlaps absorbs it
                     ev.confidence *= 0.85
                 kept.append(ev)
@@ -460,6 +477,7 @@ def transcribe(
     mode: str = "solo",
     min_pitch: int = 38,
     max_pitch: int = 92,
+    stats: dict | None = None,
 ) -> list[NoteEvent]:
     """Transcribe `audio_path` to NoteEvents, ascending by (start, pitch).
 
@@ -496,7 +514,7 @@ def transcribe(
     events = _events_from_predictions(note_events, min_pitch, max_pitch)
     events = _merge_by_pitch(events)
     if mode == "solo":
-        events = _refine_solo(events, audio_path)
+        events = _refine_solo(events, audio_path, stats=stats)
         # Octave relabelling can carry a note out of the requested window: with
         # min_pitch above the true fundamental, basic-pitch sees only the
         # harmonic and the contour then correctly places it an octave below the

@@ -160,6 +160,17 @@ def run_pipeline(
     warnings.extend(write_gp5(score, gp5_path))
     _report(progress, "Writing the notation", 0.80)
 
+    if mode == "solo":
+        # Unconditional, because it is undetectable: a suppressed octave
+        # doubling leaves a clean single-note line with no measurable trace
+        # (fold statistics were measured and do not separate the classes).
+        # The user knows whether the solo uses octaves; we cannot.
+        warnings.append(
+            "transcribed in single-note mode — if this solo uses octave "
+            "doubling (Wes Montgomery-style), the doubling will have been "
+            "written as a single line; re-run with 'Chords too' to keep it"
+        )
+
     _report(progress, "Checking my work against your recording", 0.82)
     report_path: str | None = None
     metrics: dict = {}
