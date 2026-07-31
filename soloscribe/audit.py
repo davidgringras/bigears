@@ -66,10 +66,20 @@ from matplotlib.patches import Rectangle
 from scipy.spatial.distance import cdist
 
 from .model import NoteEvent, Score
-from .synth import DEFAULT_SR, merge_tied, render_score, score_note_seconds
+from .synth import DEFAULT_SR, render_score, score_note_seconds
 
 SR = DEFAULT_SR
 HOP = 512
+
+# DTW allocates a dense frames x frames cost matrix and an accumulated matrix
+# the same size, so its memory grows with the SQUARE of the input length: at
+# hop 512 and 22.05 kHz that is 53 MB for a one-minute clip but 1.3 GB each for
+# five minutes. A guitarist dropping in a whole track would get an OOM instead
+# of a report. Above this many frames the chroma hop is doubled until the
+# matrix fits, which coarsens time resolution — so the effective hop is
+# reported in the metrics and stated in the caveats rather than applied
+# quietly. 4000 frames is ~93 s at hop 512, comfortably past any solo.
+MAX_DTW_FRAMES = 4000
 
 # 80 ms: about the width of a relaxed pick attack, and comfortably inside the
 # ~50 ms window where two attacks stop being heard as separate events.
@@ -177,6 +187,19 @@ def _intervals(spans: list[tuple[float, float]]) -> np.ndarray:
     return arr
 
 
+def _dtw_hop(n_samples: int) -> int:
+    """Chroma hop for the DTW, widened on long input so the matrix fits.
+
+    Pure and separate from the analysis so the guard can be tested without
+    synthesizing several minutes of audio — a bound nobody can afford to
+    exercise is a bound nobody exercises.
+    """
+    hop = HOP
+    while n_samples // hop > MAX_DTW_FRAMES:
+        hop *= 2
+    return hop
+
+
 def _safe(x) -> float | None:
     if x is None:
         return None
@@ -244,6 +267,7 @@ def _chroma_dtw_metrics(y_cmp: np.ndarray, y_ren: np.ndarray, sr: int) -> dict:
     empty = {
         "normalized_cost": None, "diagonality_sec": None,
         "median_deviation_sec": None, "n_frames": 0, "path_length": 0,
+        "hop_length": HOP,
     }
     if n < HOP * 4:
         return empty
@@ -252,8 +276,9 @@ def _chroma_dtw_metrics(y_cmp: np.ndarray, y_ren: np.ndarray, sr: int) -> dict:
     if not np.any(a) or not np.any(b):
         return empty
 
-    ca = librosa.feature.chroma_cqt(y=a, sr=sr, hop_length=HOP)
-    cb = librosa.feature.chroma_cqt(y=b, sr=sr, hop_length=HOP)
+    hop = _dtw_hop(n)
+    ca = librosa.feature.chroma_cqt(y=a, sr=sr, hop_length=hop)
+    cb = librosa.feature.chroma_cqt(y=b, sr=sr, hop_length=hop)
 
     # Cosine distance is undefined for an all-zero frame, and librosa's dtw
     # refuses a cost matrix containing NaN (sequence.py:426). A silent frame is
@@ -268,7 +293,7 @@ def _chroma_dtw_metrics(y_cmp: np.ndarray, y_ren: np.ndarray, sr: int) -> dict:
 
     D, wp = librosa.sequence.dtw(C=C, backtrack=True)
     dev_frames = np.abs(wp[:, 0].astype(float) - wp[:, 1].astype(float))
-    per_frame = HOP / float(sr)
+    per_frame = hop / float(sr)
     return {
         # Path-length normalization; without it the cost just measures duration.
         "normalized_cost": _safe(D[-1, -1] / max(len(wp), 1)),
@@ -278,6 +303,7 @@ def _chroma_dtw_metrics(y_cmp: np.ndarray, y_ren: np.ndarray, sr: int) -> dict:
         "median_deviation_sec": _safe(np.median(dev_frames) * per_frame),
         "n_frames": int(C.shape[0]),
         "path_length": int(len(wp)),
+        "hop_length": hop,
     }
 
 
@@ -498,13 +524,17 @@ def _piano_roll(
             if t > duration + 0.5:
                 break
             if beat == 0:
-                ax.axvline(t, color="#9aa0a6", lw=0.9, alpha=0.55, zorder=0)
+                ax.axvline(t, color="#7e858c", lw=1.0, alpha=0.7, zorder=0)
                 ax.text(
                     t, hi + 0.35, str(bar + 1), fontsize=7, color="#6b7075",
                     ha="left", va="bottom", clip_on=False,
                 )
             else:
-                ax.axvline(t, color="#c9ced3", lw=0.6, alpha=0.5, zorder=0)
+                # Faint, but a guitarist has to be able to read note placement
+                # against it. Measured on the rendered PNG: beats land at ~0.81
+                # luminance against white, barlines at ~0.66, so the bar is
+                # clearly the stronger line without either fighting the notes.
+                ax.axvline(t, color="#b0b7bd", lw=0.7, alpha=0.65, zorder=0)
 
     for ev in events:
         ax.add_patch(
@@ -910,6 +940,14 @@ def audit(
         all_caveats.append(
             "No raw transcription events were supplied, so the note-agreement "
             "and bar-by-bar timing figures are empty rather than zero."
+        )
+    hop_used = chroma.get("hop_length", HOP)
+    if hop_used != HOP:
+        all_caveats.append(
+            f"This audio is long enough that the harmonic comparison was run "
+            f"at {hop_used / SR * 1000:.0f} ms resolution instead of the usual "
+            f"{HOP / SR * 1000:.0f} ms. The timing-drift figures are "
+            "correspondingly coarse."
         )
     all_caveats.extend(STANDARD_CAVEATS)
     if _ffmpeg() is None:

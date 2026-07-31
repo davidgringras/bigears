@@ -13,15 +13,18 @@ Two things about the state are worth knowing before tuning any weight here:
 * The hidden state is a fingering PLUS a hand position (the fret the index
   finger occupies), not a fingering alone. Scoring movement as the fret
   distance between consecutive NOTES is the obvious formulation and it is
-  wrong: a chromatic E4->E5 in sixteenths costs 12 units as a single-string
-  slide up the high E and 17 units played in one position with two string
-  crossings, so a note-distance cost prefers the slide no guitarist would
-  play. Measured against a persistent hand anchor the same comparison is 8-10
-  units versus about 1, which is the answer we want and the reason the anchor
-  is carried in the state rather than inferred from the frets.
+  wrong. Take a chromatic E4->E5: summed |fret delta| is 12 for a single-string
+  slide up the high E and 17 for the same run played in one position with two
+  string crossings, so a note-distance cost prefers the slide no guitarist
+  would play, and no weight on the other terms fixes it. Under the cost
+  function below, which prices movement against a persistent anchor, the same
+  two fingerings score 10.59 and 5.36.
 * Open strings are transparent to position — reachable from anywhere, so they
   neither pin the hand nor pay for movement. A group of nothing but open
   strings inherits whatever position preceded it.
+* Movement is discounted by the SILENCE before the next attack, not by the gap
+  between attacks. Two whole notes played legato leave the hand no freer than
+  two sixteenths; four bars of rest genuinely decouple the phrases either side.
 
 Everything else is preference expressed as cost: stretch, string crossings,
 high positions, open strings in low positions, and a jazz prior that keeps
@@ -33,23 +36,28 @@ from __future__ import annotations
 import statistics
 from dataclasses import dataclass
 
-from .model import GRID_SIXTEENTH, STANDARD_TUNING, TICKS_PER_QUARTER, QNote
+from .model import GRID_EIGHTH, GRID_SIXTEENTH, STANDARD_TUNING, TICKS_PER_QUARTER, QNote
 
 # --- hand geometry ---------------------------------------------------------
 COMFORT_SPAN = 3        # frets covered one-finger-per-fret from the index finger
 HAND_SPAN = 4           # frets reachable with a stretch (pinky at position + 4)
 MAX_GROUP_SPAN = 4      # fret span allowed inside one simultaneous group
 LOW_POSITION = 3        # at or below this the open strings are idiomatic
+BAND_HIGH = 12          # top of the preferred working band
+DENSE_BAND_LOW = 3      # bottom of that band once the line is dense (jazz prior)
 HIGH_POSITION = 15      # above this the neck gets cramped and the tab unreadable
 
 # --- costs (all in the same arbitrary unit; one unit ~ one fret of travel) --
 W_MOVE = 1.0            # per fret the hand position shifts between groups
+W_SHIFT = 0.25          # flat cost of shifting at all, whatever the distance
 W_STRING_CROSS = 0.35   # per string crossed between groups
 W_REACH = 0.25          # per fret stretched beyond COMFORT_SPAN
 W_SPAN = 0.6            # per fret of stretch inside a group
-W_HIGH_POS = 0.45       # per fret above HIGH_POSITION
+W_LOW_PULL = 0.04       # per fret of position: all else equal, play down the neck
+W_BAND = 0.15           # per fret outside the preferred band
+W_HIGH_POS = 0.45       # per fret above HIGH_POSITION, on top of W_BAND
 W_OPEN_LOW = 0.4        # bonus (subtracted) per open string in a low position
-W_DENSE_LOW = 0.5       # per fret below LOW_POSITION when the line is dense
+W_DENSE_OPEN = 0.3      # per open string in a dense line
 W_VOICE_CROSS = 0.5     # per inverted pair inside a group
 W_FAST_SLIDE = 1.2      # per fret beyond SLIDE_FRETS on a fast same-string jump
 
@@ -57,7 +65,7 @@ W_FAST_SLIDE = 1.2      # per fret beyond SLIDE_FRETS on a fast same-string jump
 DENSE_IOI = TICKS_PER_QUARTER // 2      # median gap at or under an eighth = dense
 FAST_IOI = TICKS_PER_QUARTER // 2       # gap at or under an eighth = fast
 SLIDE_FRETS = 5                         # same-string jump that stops being a reach
-MOVE_DISCOUNT_FLOOR = 0.4               # a long rest still costs something to cross
+REST_HALF_LIFE = GRID_EIGHTH            # silence at which a shift is half price
 TIE_SLOP = GRID_SIXTEENTH               # how far a tie may miss its predecessor
 MAX_CANDIDATES = 24                     # K in the O(n * K^2) budget
 MAX_PLACEMENTS = 4096                   # guard against pathological chord groups
@@ -129,7 +137,10 @@ def assign_fretting(
     locked = _tie_chains(qnotes, order, log)
     participants = [i for i in order if i not in locked]
     groups = _group_by_onset(qnotes, participants)
-    dense = _is_dense(qnotes)
+    # Density is a property of the ATTACKS. A chain of tied quarter notes is one
+    # attack held, not four, and counting the continuations would read a ballad
+    # as a bebop line and push it off the open strings.
+    dense = _is_dense([qnotes[i] for i in participants])
 
     chosen = _solve(qnotes, groups, tuning, capo, max_fret, dense, log)
     for gi, (_, idxs) in enumerate(groups):
@@ -164,6 +175,13 @@ def _normalize_range(
     lowest = min(tuning) + capo
     highest = max(tuning) + capo + max_fret
     top_string = tuning.index(max(tuning)) + 1
+    # Being inside [lowest, highest] is not the same as being playable: a short
+    # max_fret leaves gaps between the strings (standard tuning stopped at fret
+    # three cannot sound A♭2 at all), and an unplayable pitch has no candidate
+    # fingering for the search to choose from.
+    reachable = {
+        open_pitch + capo + fret for open_pitch in tuning for fret in range(max_fret + 1)
+    }
     for i in order:
         q = qnotes[i]
         if q.pitch < lowest:
@@ -184,6 +202,15 @@ def _normalize_range(
                 q.onset,
             )
             q.pitch = highest
+        if q.pitch not in reachable:
+            near = min(reachable, key=lambda p: (abs(p - q.pitch), -p))
+            log.log(
+                ("gap", q.pitch, near),
+                f"pitch {q.pitch} falls in a gap between strings at max_fret "
+                f"{max_fret}; moved to the nearest playable pitch {near}",
+                q.onset,
+            )
+            q.pitch = near
 
 
 def _tie_chains(qnotes: list[QNote], order: list[int], log: _WarningLog) -> dict[int, int]:
@@ -215,7 +242,9 @@ def _tie_chains(qnotes: list[QNote], order: list[int], log: _WarningLog) -> dict
     return locked
 
 
-def _group_by_onset(qnotes: list[QNote], participants: list[int]) -> list[tuple[int, list[int]]]:
+def _group_by_onset(
+    qnotes: list[QNote], participants: list[int]
+) -> list[tuple[int, list[int]]]:
     """Bucket time-ordered participants into simultaneous groups."""
     groups: list[tuple[int, list[int]]] = []
     for i in participants:
@@ -318,7 +347,19 @@ def _build_layer(
                 )
             )
     states.sort(key=lambda s: (s.internal, s.placements, s.position))
-    return states[:MAX_CANDIDATES]
+    if len(states) <= MAX_CANDIDATES:
+        return states
+    # Prune by cost, but keep the cheapest anchor of every distinct fingering
+    # first. The cap may drop an awkward hand position; it must not drop a whole
+    # way of playing the notes, or a string the next bar needs disappears here.
+    best: dict[tuple[tuple[int, int], ...], _Fingering] = {}
+    for state in states:
+        best.setdefault(state.placements, state)
+    primary = list(best.values())
+    if len(primary) >= MAX_CANDIDATES:
+        return primary[:MAX_CANDIDATES]
+    spare = [s for s in states if best[s.placements] is not s]
+    return primary + spare[: MAX_CANDIDATES - len(primary)]
 
 
 def _internal_cost(
@@ -334,15 +375,25 @@ def _internal_cost(
         cost += W_SPAN * (max(fretted) - min(fretted))
         for fret in fretted:
             cost += W_REACH * max(0, fret - position - COMFORT_SPAN)
+    # Where on the neck the hand wants to be. Three terms, weakest first: a
+    # standing pull toward the low frets (all else equal a player takes the
+    # lower of two equivalent boxes), a firmer penalty for leaving the working
+    # band, and a hard one up where the frets crowd together. Nothing here can
+    # veto a required position — a pitch only reachable at fret 17 costs every
+    # candidate in its group the same, so the penalty cancels out of the DP.
+    band_low = DENSE_BAND_LOW if dense else 0
+    cost += W_LOW_PULL * position
+    cost += W_BAND * (max(0, band_low - position) + max(0, position - BAND_HIGH))
     cost += W_HIGH_POS * max(0, position - HIGH_POSITION)
 
     n_open = len(placement) - len(fretted)
-    if n_open and not dense and position <= LOW_POSITION:
-        cost -= W_OPEN_LOW * n_open
-    if dense:
-        # Jazz prior: a dense line lives at the third fret and above, where every
-        # note can be damped, bent and slurred. Open position is for ballads.
-        cost += W_DENSE_LOW * max(0, LOW_POSITION - position)
+    if n_open:
+        if dense:
+            # Jazz prior: an open string in a bebop line cannot be damped,
+            # vibrato'd or slurred, and it rings through the next three notes.
+            cost += W_DENSE_OPEN * n_open
+        elif position <= LOW_POSITION:
+            cost -= W_OPEN_LOW * n_open
 
     # Voicing: pitches arrive high to low, so strings should ascend 1, 2, 3...
     for a in range(len(placement) - 1):
@@ -351,11 +402,22 @@ def _internal_cost(
     return cost
 
 
-def _transition_cost(prev: _Fingering, cur: _Fingering, ioi: int) -> float:
-    """What it costs the hand to get from one group to the next."""
-    # A long gap is a free ride: the hand has time to move, so discount the shift.
-    scale = 1.0 if ioi <= TICKS_PER_QUARTER else max(MOVE_DISCOUNT_FLOOR, TICKS_PER_QUARTER / ioi)
-    cost = W_MOVE * abs(cur.position - prev.position) * scale
+def _transition_cost(prev: _Fingering, cur: _Fingering, ioi: int, rest: int) -> float:
+    """What it costs the hand to get from one group to the next.
+
+    Movement is discounted by the SILENCE before the next attack, not by the
+    gap between attacks. Two tied-together whole notes leave the hand no more
+    freedom than two sixteenths — it is still holding the string — whereas four
+    bars of rest genuinely decouple the phrases either side of it. Keying this
+    on the inter-onset interval instead drags a low phrase up to the twelfth
+    fret because a phrase four bars later happens to live there.
+    """
+    scale = REST_HALF_LIFE / (REST_HALF_LIFE + max(0, rest))
+    move = abs(cur.position - prev.position)
+    # The flat term is what keeps a slow line from wandering a fret at a time up
+    # one string: twelve one-fret shifts cost twelve flat charges, a single jump
+    # across a four-bar rest costs one (and that one is discounted to nothing).
+    cost = (W_MOVE * move + W_SHIFT * bool(move)) * scale
     cost += W_STRING_CROSS * abs(cur.mean_string - prev.mean_string)
     if ioi <= FAST_IOI and prev.lone is not None and cur.lone is not None:
         (ps, pf), (cs, cf) = prev.lone, cur.lone
@@ -384,8 +446,10 @@ def _solve(
         return []
 
     per_group: list[tuple[list[tuple[tuple[int, int], ...]], tuple[int, ...]]] = []
+    group_end: list[int] = []
     for onset, idxs in groups:
         pitches = tuple(qnotes[i].pitch for i in idxs)
+        group_end.append(max(qnotes[i].offset for i in idxs))
         options = [_note_options(p, tuning, capo, max_fret) for p in pitches]
         placements = _placements(options, MAX_GROUP_SPAN, MAX_PLACEMENTS)
         if not placements:
@@ -412,6 +476,7 @@ def _solve(
     prev_layer: list[_Fingering] = []
     prev_cost: list[float] = []
     prev_onset = groups[0][0]
+    prev_end = group_end[0]
 
     for gi, (onset, _) in enumerate(groups):
         placements, pitches = per_group[gi]
@@ -420,6 +485,7 @@ def _solve(
         costs: list[float] = []
         back: list[int] = []
         ioi = max(1, onset - prev_onset)
+        rest = max(0, onset - prev_end)
         for state in layer:
             if not prev_layer:
                 costs.append(state.internal)
@@ -427,14 +493,14 @@ def _solve(
                 continue
             best, best_k = float("inf"), 0
             for k, prior in enumerate(prev_layer):
-                c = prev_cost[k] + _transition_cost(prior, state, ioi)
+                c = prev_cost[k] + _transition_cost(prior, state, ioi, rest)
                 if c < best:
                     best, best_k = c, k
             costs.append(best + state.internal)
             back.append(best_k)
         layers.append(layer)
         backs.append(back)
-        prev_layer, prev_cost, prev_onset = layer, costs, onset
+        prev_layer, prev_cost, prev_onset, prev_end = layer, costs, onset, group_end[gi]
 
     k = min(range(len(prev_cost)), key=lambda j: (prev_cost[j], j))
     chosen: list[tuple[tuple[int, int], ...]] = []
@@ -471,19 +537,23 @@ def _repair_collisions(
                 for opt in _note_options(q.pitch, tuning, capo, max_fret)
                 if opt[0] not in used
             ]
+            held = qnotes[used[q.string]].tied_from_prev
+            because = (
+                "a tied note was holding its string"
+                if held
+                else "another note was already sounding on its string"
+            )
             if not free:
                 log.log(
                     ("stacked", q.pitch),
-                    f"pitch {q.pitch} shares a string with a held note and has "
-                    "nowhere else to go",
+                    f"pitch {q.pitch} has no free string at this onset ({because})",
                     onset,
                 )
                 continue
             string, fret = min(free, key=lambda o: (abs(o[1] - (q.fret or 0)), o[0]))
             log.log(
                 ("moved", q.pitch),
-                f"pitch {q.pitch} moved to string {string} fret {fret}; a tied note "
-                "was holding its string",
+                f"pitch {q.pitch} moved to string {string} fret {fret}; {because}",
                 onset,
             )
             q.string, q.fret = string, fret

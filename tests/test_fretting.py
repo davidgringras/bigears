@@ -47,6 +47,11 @@ def _fretted(qnotes: list[QNote]) -> list[int]:
 # the six required cases
 # --------------------------------------------------------------------------
 def test_c_major_scale_is_playable_and_positionally_coherent():
+    # Worth knowing what this does and does not catch: a diatonic scale in open
+    # position is where the engine's cheapest-per-note answer and its
+    # hand-continuity answer coincide, so this stays green even with the
+    # movement cost switched off. It pins playability and the jump rule; the
+    # chromatic test below is what actually exercises position continuity.
     notes = _line([48, 50, 52, 53, 55, 57, 59, 60], QUARTER)  # C3 up to C4
     warnings = assign_fretting(notes)
 
@@ -95,14 +100,16 @@ def test_tied_chain_keeps_one_string_and_fret_throughout():
         QNote(onset=i * QUARTER, duration=QUARTER, pitch=60, tied_from_prev=i > 0)
         for i in range(4)
     ]
-    # A line moving up the neck between the chain's attacks: the held note must
-    # not follow the hand.
-    moving = [
-        QNote(onset=EIGHTH, duration=EIGHTH, pitch=79),
-        QNote(onset=QUARTER + EIGHTH, duration=EIGHTH, pitch=81),
-        QNote(onset=2 * QUARTER + EIGHTH, duration=EIGHTH, pitch=83),
+    # Between the chain's attacks the hand is yanked to the first fret and then
+    # to the twenty-second: F2 and D6 are each playable on exactly one string.
+    # Without the tie lock the continuations chase the hand and the chain comes
+    # back re-fretted, which is the failure this is here to catch.
+    pull = [
+        QNote(onset=EIGHTH, duration=EIGHTH, pitch=41),              # string 6, fret 1
+        QNote(onset=QUARTER + EIGHTH, duration=EIGHTH, pitch=86),    # string 1, fret 22
+        QNote(onset=2 * QUARTER + EIGHTH, duration=EIGHTH, pitch=41),
     ]
-    notes = chain + moving
+    notes = chain + pull
     warnings = assign_fretting(notes)
 
     assert warnings == []
@@ -177,6 +184,9 @@ def test_pitch_above_the_range_is_clamped_to_the_top_fret():
 
 
 def test_fast_alternation_crosses_strings_instead_of_sliding():
+    # Two redundant terms deliver this: the hand-position movement cost and the
+    # explicit fast-slide penalty. Either alone is enough, so the slide only
+    # reappears when both are removed.
     notes = _line([65, 72] * 6, SIXTEENTH)
     warnings = assign_fretting(notes)
 
@@ -186,6 +196,35 @@ def test_fast_alternation_crosses_strings_instead_of_sliding():
         assert not (a.string == b.string and abs(a.fret - b.fret) >= 5), (
             f"5+ fret slide on string {a.string} at sixteenth-note speed"
         )
+
+
+def test_a_long_rest_decouples_the_phrases_either_side_of_it():
+    """Silence, not attack spacing, is what frees the hand to move."""
+    low = _line([52, 53, 55, 57, 59], EIGHTH)                    # E3..B3, comfortable low
+    high = _line([79, 81, 83, 84, 86], EIGHTH, start=8 * QUARTER)  # G5..D6, frets 15-22 only
+    notes = low + high
+    warnings = assign_fretting(notes)
+
+    assert warnings == []
+    _assert_playable(notes)
+    assert max(_fretted(low)) <= 7, (
+        "a low phrase was dragged up the neck by a phrase two bars away"
+    )
+    assert min(_fretted(high)) >= 15
+
+
+def test_a_fresh_attack_never_shares_a_string_with_a_held_note():
+    """The one place the tie constraint and the group constraint can collide."""
+    held = QNote(onset=0, duration=2 * QUARTER, pitch=60)
+    tied = QNote(onset=QUARTER, duration=QUARTER, pitch=60, tied_from_prev=True)
+    struck = QNote(onset=QUARTER, duration=QUARTER, pitch=60)
+    notes = [held, tied, struck]
+    warnings = assign_fretting(notes)
+
+    _assert_playable(notes)
+    assert (tied.string, tied.fret) == (held.string, held.fret)
+    assert struck.string != tied.string, "two notes cannot sound on one string"
+    assert len(warnings) == 1 and "holding its string" in warnings[0]
 
 
 def test_orphan_tie_is_fretted_and_warned_about():
@@ -217,3 +256,13 @@ def test_seven_string_tuning_is_supported():
     assert warnings == []
     _assert_playable(notes, tuning=tuning)
     assert notes[0].string == 7 and notes[0].fret == 0
+
+
+def test_a_pitch_in_a_gap_between_strings_is_moved_to_a_playable_one():
+    """A short max_fret leaves holes: G#2 is unreachable when nothing exceeds fret 3."""
+    notes = [QNote(onset=0, duration=QUARTER, pitch=44)]
+    warnings = assign_fretting(notes, max_fret=3)
+
+    assert len(warnings) == 1
+    assert "gap between strings" in warnings[0]
+    _assert_playable(notes, max_fret=3)

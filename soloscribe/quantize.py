@@ -32,6 +32,30 @@ def build_beat_grid(
     import librosa
 
     duration = len(y) / sr
+
+    # A caller who supplies BOTH tempo and downbeat has asserted ground
+    # truth — honor it with an exact metronomic grid. Tracking would only
+    # re-introduce phase errors (a syncopated line pulls the tracker toward
+    # the offbeats; comb-energy correction is circular for the same reason).
+    if bpm is not None and bpm > 0 and downbeat is not None:
+        period = 60.0 / float(bpm)
+        horizon = max(duration, cover_until or 0.0)
+        t0 = float(downbeat)
+        while t0 - period >= -period * 0.5:
+            t0 -= period
+        times = []
+        t = t0
+        while t < horizon + period:
+            times.append(t)
+            t += period
+        first = int(np.argmin([abs(t - downbeat) for t in times]))
+        return BeatGrid(
+            beat_times=times,
+            beats_per_bar=beats_per_bar,
+            first_downbeat=first,
+            bpm_nominal=float(bpm),
+        )
+
     if bpm is not None and bpm > 0:
         tempo_prior = float(bpm)
         tightness = 400  # trust the user's tempo; track drift only
@@ -62,6 +86,35 @@ def build_beat_grid(
         elif 0.42 < ratio < 0.6:  # tracker found double-time → take every other
             times = times[::2]
             period *= 2
+
+    # Constant phase correction: the tracker can lock onto offbeat energy
+    # (syncopated 16th lines drag it ~0.2 beats early). Keep its drift, but
+    # slide the whole grid to the phase that maximizes onset-envelope energy
+    # at the beat times. Found by the ground-truth E2E harness (funk lick:
+    # 14/16 beats off by > an eighth before this correction).
+    if len(times) > 3:
+        env = librosa.onset.onset_strength(y=y, sr=sr)
+        env_t = librosa.times_like(env, sr=sr)
+        arr = np.asarray(times)
+
+        def _energy(delta: float) -> float:
+            shifted = arr + delta
+            ok = (shifted >= env_t[0]) & (shifted <= env_t[-1])
+            if not ok.any():
+                return -1.0
+            return float(np.mean(np.interp(shifted[ok], env_t, env)))
+
+        deltas = np.linspace(-0.35 * period, 0.35 * period, 29)
+        best = max(deltas, key=_energy)
+        if _energy(best) > _energy(0.0) * 1.02:  # only move on clear evidence
+            times = [t + float(best) for t in arr]
+
+    # A user-supplied downbeat is ground truth: shift the grid so the nearest
+    # tracked beat lands exactly on it.
+    if downbeat is not None and times:
+        nearest = min(times, key=lambda t: abs(t - downbeat))
+        if abs(nearest - downbeat) <= period * 0.5:
+            times = [t + (downbeat - nearest) for t in times]
 
     # Extrapolate to cover [0, duration] (and any caller-requested horizon).
     horizon = max(duration, cover_until or 0.0)
@@ -104,16 +157,30 @@ _TEMPLATES: list[tuple[str, tuple[float, ...], tuple[float, ...], float]] = [
 
 
 def detect_swing(events: list[NoteEvent], grid: BeatGrid) -> tuple[bool, float]:
-    """Do offbeat eighths sit nearer 2/3 than 1/2? Returns (swing, median_pos)."""
-    offbeats = []
+    """Do offbeat eighths sit nearer 2/3 than 1/2? Returns (swing, median_pos).
+
+    Beats carrying sixteenth-position evidence (onsets near 0.25/0.75) are
+    excluded — a straight 16th line's 0.75 onsets would otherwise drag the
+    median into the swing band and stamp a funk line "swing feel". The band
+    is also closed below 0.75, where the fourth sixteenth lives.
+    """
+    by_beat: dict[int, list[float]] = {}
     for ev in events:
-        _, frac = _beat_position(grid.beat_times, ev.start)
-        if 0.36 <= frac <= 0.80:
-            offbeats.append(frac)
+        bi, frac = _beat_position(grid.beat_times, ev.start)
+        by_beat.setdefault(bi, []).append(frac)
+
+    offbeats = []
+    for fracs in by_beat.values():
+        sixteenthish = any(
+            0.21 <= f <= 0.29 or 0.71 <= f <= 0.79 for f in fracs
+        )
+        if sixteenthish:
+            continue
+        offbeats.extend(f for f in fracs if 0.40 <= f <= 0.80)
     if len(offbeats) < 4:
         return False, 0.5
     med = float(np.median(offbeats))
-    return med >= 0.58, med
+    return 0.58 <= med < 0.75, med
 
 
 def quantize(

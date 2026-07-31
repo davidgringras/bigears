@@ -134,10 +134,41 @@ def test_self_consistency_alignment_is_diagonal(clean):
     metrics, _ = clean
     c = metrics["chroma_dtw"]
     # Auditing a render against itself: the warping path has no reason to leave
-    # the diagonal, and the cost has no reason to be nonzero.
+    # the diagonal, and the cost has no reason to be anything but rounding.
+    #
+    # It is not exactly zero, and the reason is worth pinning down rather than
+    # papering over with a loose bound: the audit reloads the render from a
+    # 16-bit WAV, and that round-trip costs ~3e-5 of sample error. Measured
+    # here, the cost tracks that error faithfully — PCM_16 -> 2.6e-6,
+    # PCM_24 -> 2.3e-12, float32 -> 1.8e-15, no file at all -> 5.2e-17. The
+    # bound below sits above the 16-bit figure and four orders of magnitude
+    # below CHROMA_COST_BLOCK, so it still fails loudly on a real defect.
     assert c["normalized_cost"] is not None
-    assert c["normalized_cost"] < 1e-6, c
+    assert c["normalized_cost"] < 1e-4, c
     assert c["diagonality_sec"] < 0.05, c
+
+
+def test_diagonality_rises_when_the_render_is_out_of_step(rendered, tmp_path):
+    """Negative test for the drift metric.
+
+    diagonality_sec reads 0.0 in every other test here, which on its own is
+    indistinguishable from a metric that is wired to nothing. Delay the
+    recording by a second relative to the score and it must notice.
+    """
+    score, events, wav = rendered
+    y, sr = sf.read(wav)
+    # 2 s, not 1: the score is ~5.3 s long, and 1 s of lead-in is a 16 % span
+    # mismatch, which sits just under DURATION_MISMATCH_RATIO. Testing at the
+    # threshold tells you about the threshold, not about the metric.
+    delayed = str(tmp_path / "delayed.wav")
+    sf.write(delayed, np.concatenate([np.zeros(2 * sr, dtype=y.dtype), y]), sr,
+             subtype="PCM_16")
+
+    metrics = audit(score, events, delayed, None, str(tmp_path / "delayed_out"))
+    assert metrics["chroma_dtw"]["diagonality_sec"] > 0.5, metrics["chroma_dtw"]
+    assert metrics["verdict"]["level"] != "high"
+    # a span mismatch this large must be said out loud, not absorbed
+    assert any("only covers" in c for c in metrics["caveats"]), metrics["caveats"]
 
 
 def test_per_measure_covers_every_bar(clean):
@@ -231,6 +262,51 @@ def test_caveats_include_passed_in_and_standard(rendered, tmp_path):
     assert any("Swing is notated straight" in c for c in metrics["caveats"])
     text = open(metrics["report_path"], encoding="utf-8").read()
     assert "Tempo was supplied by hand, not detected." in text
+
+
+def test_stem_is_used_as_the_comparison_and_gets_its_own_player(
+    rendered, tmp_path
+):
+    """With a stem supplied, the audit must compare against it and say so."""
+    score, events, wav = rendered
+    metrics = audit(score, events, wav, wav, str(tmp_path / "stem"))
+    assert metrics["comparison_source"] == "stem"
+    text = open(metrics["report_path"], encoding="utf-8").read()
+    assert text.count("<audio") == 3, "original, stem and render"
+    assert not any("full mix" in c for c in metrics["caveats"])
+
+
+def test_wav_fallback_when_ffmpeg_is_absent(rendered, tmp_path, monkeypatch):
+    """The no-ffmpeg branch ships to every machine that lacks ffmpeg and had
+    never once executed. A branch that has only ever been green because it was
+    never entered is not tested, it is unobserved."""
+    import soloscribe.audit as audit_mod
+
+    monkeypatch.setattr(audit_mod, "_ffmpeg", lambda: None)
+    score, events, wav = rendered
+    metrics = audit(score, events, wav, None, str(tmp_path / "noffmpeg"))
+    text = open(metrics["report_path"], encoding="utf-8").read()
+    assert "data:audio/wav;base64," in text
+    assert "data:audio/mpeg" not in text
+    assert any("ffmpeg was not found" in c for c in metrics["caveats"])
+
+
+def test_dtw_hop_widens_before_the_cost_matrix_explodes():
+    """DTW allocates frames-squared, twice. Unguarded, a five-minute file asks
+    for ~2.7 GB and the audit dies instead of reporting."""
+    from soloscribe.audit import HOP, MAX_DTW_FRAMES, SR, _dtw_hop
+
+    assert _dtw_hop(30 * SR) == HOP
+    assert _dtw_hop(90 * SR) == HOP, "a long solo must keep full resolution"
+    assert _dtw_hop(300 * SR) > HOP, "a whole track must be coarsened"
+    for secs in (10, 60, 93, 120, 300, 900, 3600):
+        hop = _dtw_hop(secs * SR)
+        frames = secs * SR // hop
+        assert frames <= MAX_DTW_FRAMES, (secs, hop, frames)
+        assert hop % HOP == 0 and hop >= HOP
+    # the bound is what actually matters: keep peak allocation sane
+    worst = MAX_DTW_FRAMES ** 2 * 8 * 2 / 1e9
+    assert worst < 0.30, f"{worst:.2f} GB peak is too much"
 
 
 def test_metrics_dict_keys_are_stable(clean):

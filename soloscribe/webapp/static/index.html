@@ -90,13 +90,12 @@
         </div>
 
         <div class="field">
-          <label for="bpm">Tempo</label>
-          <div class="with-suffix">
-            <input type="text" id="bpm" name="bpm" inputmode="decimal"
-                   placeholder="Leave blank and I will work it out">
-            <span class="suffix">beats per minute</span>
-          </div>
-          <p class="help">Only fill this in if you already know it, or if my guess comes out wrong.</p>
+          <label for="bpm">Tempo, in beats per minute</label>
+          <input type="text" id="bpm" name="bpm" inputmode="decimal" placeholder="Leave blank">
+          <p class="help">
+            Left blank, I will work the tempo out from your playing. Fill it in
+            only if you already know it, or if my guess comes out wrong.
+          </p>
         </div>
 
         <div class="field">
@@ -242,6 +241,7 @@
   <section class="card card-error" id="card-error" hidden role="alert">
     <h2 class="card-heading">I am sorry, that did not work.</h2>
     <p class="error-message" id="error-message"></p>
+    <p class="error-kind" id="error-kind" hidden></p>
     <p class="error-note">
       Your recording is untouched. If it happens again with the same file, try a
       shorter excerpt, or save it as a WAV and start over.

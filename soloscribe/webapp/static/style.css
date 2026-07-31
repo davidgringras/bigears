@@ -519,6 +519,14 @@ li[data-state="failed"] .step-mark::after { transform: rotate(-45deg); }
   word-break: break-word;
 }
 
+.error-kind {
+  margin: -.6rem 0 1.2rem;
+  color: var(--ink-faint);
+  font-size: .84rem;
+}
+
+.error-kind code { font-family: var(--mono); font-size: .95em; }
+
 .error-note { margin: 0 0 1.6rem; color: var(--ink-faint); font-size: .89rem; }
 
 /* --------------------------------------------------------------- colophon */

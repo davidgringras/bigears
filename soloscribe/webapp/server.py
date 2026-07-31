@@ -68,32 +68,52 @@ NOT_WIRED_MESSAGE = (
     "not turn your recording into notation. Nothing is wrong with your file."
 )
 
-# The pipeline reports its own stage names (see pipeline.py: load, separate,
-# transcribe, beat grid, quantize, fret, write GP5, synthesize score, audit,
-# HTML report). Those names are not part of the frozen contract, so match on
-# substrings and take the LAST checklist step that matches — that way a stage
-# called "write report" lands on the report step rather than the writing one.
+_UNREADABLE = (
+    "I could not read that recording at all. The file may be damaged, or it may "
+    "not really be audio. Try playing it in another app to check, then save it "
+    "again as a WAV or an MP3."
+)
+
+# Plain readings for failures whose own message would tell the person reading it
+# nothing. Keyed on class name so this layer need not import the audio stack.
+# NoBackendError and DecodeError come from audioread, whose docstring says "The
+# file could not be decoded by any backend" — the wording below claims no more
+# than that. Only add an entry whose meaning has been read from its source.
+PLAIN_ERRORS: dict[str, str] = {
+    "NoBackendError": _UNREADABLE,
+    "DecodeError": _UNREADABLE,
+    "FileNotFoundError": "I lost track of your recording. Please choose it again.",
+    "MemoryError": (
+        "That recording is too big for me to hold all at once. Try transcribing "
+        "a shorter stretch of it."
+    ),
+}
+
+# One checklist step per stage run_pipeline actually reports, in the order it
+# reports them. Read off the _report(progress, ...) call sites in pipeline.py:
+# Listening → Isolating the guitar → Working out the notes → Finding the beat
+# → Writing the notation → Checking my work against your recording. Note that
+# transcription really does run before beat tracking (the grid is tracked on
+# the full mix while the notes come off the separated stem), and that fretting
+# is reported inside the writing stage rather than on its own.
 #
-# The order below follows pipeline.py's documented execution order, in which
-# transcription runs BEFORE beat tracking. That is why "Working out the notes"
-# is listed above "Finding the beat" — the reverse (the order these labels were
-# first drafted in) would tick "Finding the beat" as finished while it had not
-# yet run. Quantisation sits with the beat step because that is the stage that
-# fits the notes onto it. If the pipeline's real order turns out to differ,
-# this tuple is the one place to change.
+# The stage strings are not part of the frozen contract, so each step also
+# carries substrings — matched against the whole reported name, taking the LAST
+# step that matches — to survive a rename. test_webapp.py reads the literals
+# straight out of pipeline.py and fails if any of them stops mapping.
 STAGES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("listen", "Listening to your recording",
-     ("load", "read", "audio", "decode", "resample", "separat", "isolat", "stem", "demucs")),
+     ("listen", "load", "read", "decode", "resample", "audio")),
+    ("isolate", "Isolating the guitar from the band",
+     ("isolat", "separat", "stem", "demucs")),
     ("notes", "Working out the notes",
-     ("transcri", "pitch", "onset", "note", "basic")),
+     ("note", "transcri", "pitch", "onset", "basic")),
     ("beat", "Finding the beat",
      ("beat", "tempo", "grid", "downbeat", "metre", "meter", "quantis", "quantiz")),
-    ("fingers", "Choosing fingerings",
-     ("fret", "finger", "string", "tab", "position")),
     ("write", "Writing the Guitar Pro file",
-     ("gp5", "guitar pro", "guitarpro", "write", "export")),
+     ("writ", "notation", "gp5", "guitar pro", "guitarpro", "export", "fret", "finger")),
     ("check", "Checking my work against your recording",
-     ("audit", "synth", "resynth", "report", "check", "compar", "score against")),
+     ("check", "audit", "synth", "resynth", "report", "compar")),
 )
 STAGE_KEYS = tuple(key for key, _, _ in STAGES)
 
@@ -112,12 +132,14 @@ class Job:
     id: str
     title: str = ""
     filename: str = ""
+    separate: str = "auto"            # drives whether the isolation step shows
     status: str = "queued"            # queued | running | done | error
     stage: str = ""                   # raw stage name from the pipeline
     frac: float = 0.0                 # raw fraction from the pipeline
     overall: float = 0.0              # monotone 0..1 for the progress bar
     step_index: int = -1              # index into STAGES, -1 before the first
     error: str | None = None          # one friendly sentence for the page
+    error_kind: str = ""              # exception class name, for reporting it on
     error_detail: str | None = None   # traceback, for whoever is integrating
     warnings: list[str] = field(default_factory=list)
     metrics: dict = field(default_factory=dict)
@@ -131,6 +153,8 @@ class Job:
         """The checklist the page renders, one entry per friendly stage."""
         out: list[dict] = []
         for i, (key, label, _) in enumerate(STAGES):
+            if key == "isolate" and self.separate == "off":
+                continue  # asked to skip it, so do not promise it
             if self.status == "done":
                 state = "done"
             elif self.status == "error":
@@ -171,6 +195,7 @@ class Job:
             "steps": self.steps(),
             "history": list(self.history),
             "error": self.error,
+            "error_kind": self.error_kind,
             "error_detail": self.error_detail,
             "warnings": list(self.warnings),
             "metrics": self.metrics,
@@ -227,12 +252,13 @@ def _record_progress(job_id: str, stage: str, frac: float) -> None:
             # Never walk backwards: an unrecognised stage, or a pipeline that
             # revisits an earlier one, should not un-tick the checklist.
             job.step_index = max(job.step_index, idx)
-        # pipeline.py documents `frac` as "fraction 0..1" without saying whether
-        # it is stage-local or whole-run. Treating it as stage-local and
-        # clamping to monotone keeps the bar sane under either reading.
-        span = 1.0 / len(STAGES)
-        base = max(job.step_index, 0) * span
-        job.overall = max(job.overall, min(1.0, base + span * frac))
+        # run_pipeline reports frac as a WHOLE-RUN fraction: its call sites walk
+        # 0.02 → 1.0 across the pipeline rather than restarting each stage. So
+        # use it as given. A reporter that only marks stage boundaries would
+        # send 0.0 forever, hence the fall back to the checklist position; the
+        # clamp keeps the bar monotone under either.
+        candidate = frac if frac > 0.0 else max(job.step_index, 0) / len(STAGES)
+        job.overall = max(job.overall, min(1.0, candidate))
         job.history.append({
             "stage": stage,
             "frac": frac,
@@ -262,16 +288,29 @@ def _run_job(job_id: str, audio_path: Path, out_dir: Path, options: dict) -> Non
                 **options,
             )
         except NotImplementedError:
-            _fail(job_id, NOT_WIRED_MESSAGE, traceback.format_exc())
+            _fail(job_id, NOT_WIRED_MESSAGE, traceback.format_exc(), "NotImplementedError")
             return
         except Exception as exc:  # noqa: BLE001 — the page shows this to a human
-            message = str(exc).strip() or exc.__class__.__name__
-            _fail(job_id, message, traceback.format_exc())
+            message, kind = _explain(exc)
+            _fail(job_id, message, traceback.format_exc(), kind)
             return
         _finish(job_id, result)
 
 
-def _fail(job_id: str, message: str, detail: str | None = None) -> None:
+def _explain(exc: BaseException) -> tuple[str, str]:
+    """A sentence for the person reading it, plus the name David would want."""
+    kind = exc.__class__.__name__
+    if kind in PLAIN_ERRORS:
+        return PLAIN_ERRORS[kind], kind
+    message = str(exc).strip()
+    if message:
+        return message, kind
+    # Bare exceptions do exist — audioread's NoBackendError carries no message
+    # at all — and the class name alone is not something to hand to a guitarist.
+    return "Something went wrong and it did not tell me what.", kind
+
+
+def _fail(job_id: str, message: str, detail: str | None = None, kind: str = "") -> None:
     with _LOCK:
         job = _JOBS.get(job_id)
         if job is None:
@@ -279,6 +318,7 @@ def _fail(job_id: str, message: str, detail: str | None = None) -> None:
         job.status = "error"
         job.error = message
         job.error_detail = detail
+        job.error_kind = kind
         job.finished_at = time.time()
 
 
@@ -295,6 +335,8 @@ def _finish(job_id: str, result) -> None:
         }
         job.warnings = list(getattr(result, "warnings", None) or [])
         job.metrics = dict(getattr(result, "metrics", None) or {})
+        stem = getattr(result, "stem_path", None)
+        job.result_paths["stem"] = str(stem) if stem and os.path.exists(stem) else None
         if not job.result_paths["gp5"]:
             job.status = "error"
             job.error = (
@@ -459,7 +501,12 @@ async def create_job(
         audio_path.unlink(missing_ok=True)
         raise _bad("That file is empty. Please choose the recording again.")
 
-    job = Job(id=job_id, title=options["title"], filename=Path(name).name)
+    job = Job(
+        id=job_id,
+        title=options["title"],
+        filename=Path(name).name,
+        separate=options["separate"],
+    )
     with _LOCK:
         _JOBS[job_id] = job
     threading.Thread(

@@ -8,6 +8,23 @@ alongside it and uses the contour — which is monophonic by construction, so it
 locks onto one voice and stays there — to relabel octave errors, drop harmonic
 ghosts, and mark vibrato. "poly" mode returns the raw basic-pitch reading.
 
+Two measured limits of that refinement, both worth keeping in view before
+anyone "simplifies" the guards around it:
+
+  * pyin does not merely pick one voice on a harmonic dyad, it locks onto the
+    voices' common subharmonic — a 52+59 fifth reads as MIDI 40, an octave and
+    a fifth below either note. An unguarded octave rule therefore moves a
+    *correct* note down an octave on one of the most common shapes in the
+    idiom. Octave relabelling is consequently refused on any span that has a
+    concurrent note and nothing at the target pitch (`_refine_solo`).
+  * an octave double-stop of comparable played loudness does not necessarily
+    reach basic-pitch as comparable *activation*: on a synthetic 52+64 pluck
+    pair at equal gain the upper note came back at 0.52× the lower's
+    amplitude, under GHOST_AMP_RATIO, and solo mode collapsed the pair to the
+    lower note. Loosening that ratio to rescue the case would blunt harmonic-
+    ghost rejection, which is the refinement's main earner and is much better
+    evidenced, so the trade is deliberately left where it is.
+
 Verified against the installed basic-pitch 0.4.0 source:
 
   * `predict(audio_path, model_or_model_path, onset_threshold, frame_threshold,
@@ -280,6 +297,27 @@ def _detect_vibrato(contour: _Contour, ev: NoteEvent) -> bool:
     return VIB_RATE_LO <= peak_hz <= VIB_RATE_HI
 
 
+def _merge_by_pitch(events: list[NoteEvent]) -> list[NoteEvent]:
+    """`merge_adjacent_events` applied one pitch at a time.
+
+    The helper walks a list sorted by (start, pitch) and only ever compares
+    against the event it last emitted, so a note at some other pitch sorting
+    between two fragments of a decay-split note blocks the merge that exists to
+    repair it — a G3 split at 1.0s stays split whenever anything else is
+    sounding across the seam. Grouping by pitch first is exactly equivalent for
+    the default `max_pitch_diff=0` (the helper never merges across pitches
+    there) and removes the ordering sensitivity; it is not equivalent for a
+    nonzero max_pitch_diff, which this module does not use.
+    """
+    by_pitch: dict[int, list[NoteEvent]] = {}
+    for ev in events:
+        by_pitch.setdefault(ev.pitch, []).append(ev)
+    merged: list[NoteEvent] = []
+    for group in by_pitch.values():
+        merged.extend(merge_adjacent_events(group))
+    return sorted(merged, key=lambda e: (e.start, e.pitch))
+
+
 def _dedup_overlaps(events: list[NoteEvent]) -> list[NoteEvent]:
     """Fold same-pitch events that overlap in time into one.
 
@@ -309,6 +347,18 @@ def _refine_solo(events: list[NoteEvent], audio_path: str) -> list[NoteEvent]:
     contour = _pyin_contour(audio_path)
     medians = [_contour_median(contour, ev) for ev in events]
     amps = [_velocity_to_amp(ev.velocity) for ev in events]
+    # Relabelling mutates pitch in place, so host lookups read a snapshot taken
+    # before the loop: "is something else sounding at the target pitch" is a
+    # question about what basic-pitch reported, and answering it against
+    # already-relabelled neighbours would make the pass order-dependent.
+    reported = [ev.pitch for ev in events]
+    concurrent = [
+        [j for j, o in enumerate(events) if j != i and _overlap_frac(ev, o) >= OVERLAP_FRAC]
+        for i, ev in enumerate(events)
+    ]
+
+    def masked_by_louder(i: int) -> bool:
+        return any(amps[i] < GHOST_AMP_RATIO * amps[j] for j in concurrent[i])
 
     kept: list[NoteEvent] = []
     for i, ev in enumerate(events):
@@ -325,41 +375,43 @@ def _refine_solo(events: list[NoteEvent], audio_path: str) -> list[NoteEvent]:
             # whether a *comparably loud* note already sits at the target
             # pitch: that is a real octave double-stop and must survive.
             host = next(
-                (
-                    j
-                    for j, other in enumerate(events)
-                    if j != i
-                    and other.pitch == ev.pitch + shift
-                    and _overlap_frac(ev, other) >= OVERLAP_FRAC
-                ),
+                (j for j in concurrent[i] if reported[j] == reported[i] + shift),
                 None,
             )
-            if host is not None and amps[i] >= GHOST_AMP_RATIO * amps[host]:
-                ev.confidence *= 0.7          # plausible double-stop, kept
+            if host is not None:
+                if amps[i] >= GHOST_AMP_RATIO * amps[host]:
+                    ev.confidence *= 0.7      # octave double-stop, both real
+                else:
+                    ev.pitch += shift         # harmonic; _dedup_overlaps absorbs it
+                    ev.confidence *= 0.85
                 kept.append(ev)
                 continue
-            ev.pitch += shift                 # relabel; _dedup_overlaps may absorb it
-            ev.confidence *= 0.85
-            kept.append(ev)
-            continue
-
-        if abs(delta) > CONTRA_SEMITONES:
-            louder = any(
-                amps[i] < GHOST_AMP_RATIO * amps[j]
-                and _overlap_frac(ev, other) >= OVERLAP_FRAC
-                for j, other in enumerate(events)
-                if j != i
-            )
-            if louder:
-                continue                      # ghost: quiet, contradicted, masked
-            ev.confidence *= 0.7              # contradicted but unmasked — keep
-            kept.append(ev)
-            continue
-
-        if abs(delta) <= AGREE_SEMITONES:
+            if not concurrent[i]:
+                ev.pitch += shift             # octave error over a monophonic span
+                ev.confidence *= 0.85
+                kept.append(ev)
+                continue
+            # Polyphonic span with nothing at the target pitch. pyin is an
+            # autocorrelation-family tracker, so on a harmonic dyad it locks
+            # onto the common subharmonic rather than either voice — a 52+59
+            # fifth reads as MIDI 40, and relabelling on that reading would
+            # move a correct note down an octave. Refuse, and let the note
+            # take its chances with the masked-ghost test below.
+        elif abs(delta) <= AGREE_SEMITONES:
             ev.confidence += (1.0 - ev.confidence) * 0.5
-        else:
+            kept.append(ev)
+            continue
+        elif abs(delta) <= CONTRA_SEMITONES:
             ev.confidence *= 0.9
+            kept.append(ev)
+            continue
+
+        # Contradicted by the contour: a ghost only if it is also quiet and
+        # buried under a concurrent note. An unmasked contradiction is more
+        # likely a second voice the monophonic contour simply isn't following.
+        if masked_by_louder(i):
+            continue
+        ev.confidence *= 0.7
         kept.append(ev)
 
     kept = _dedup_overlaps(kept)
@@ -412,8 +464,14 @@ def transcribe(
         )
 
     events = _events_from_predictions(note_events, min_pitch, max_pitch)
-    events = merge_adjacent_events(events)
+    events = _merge_by_pitch(events)
     if mode == "solo":
         events = _refine_solo(events, audio_path)
-        events = merge_adjacent_events(events)
+        # Octave relabelling can carry a note out of the requested window: with
+        # min_pitch above the true fundamental, basic-pitch sees only the
+        # harmonic and the contour then correctly places it an octave below the
+        # floor. The note is real but out of range, so the range wins — the
+        # alternative is emitting it at a pitch the contour contradicts.
+        events = [e for e in events if min_pitch <= e.pitch <= max_pitch]
+        events = _merge_by_pitch(events)
     return sorted(events, key=lambda e: (e.start, e.pitch))

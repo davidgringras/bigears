@@ -100,12 +100,14 @@ def _run_model(
                 f"model {model_name!r} has no stem {stem_name!r}; it emits {sources}"
             )
         mix, stems = sep.separate_audio_file(Path(audio_path))
-        stem = stems[stem_name].detach().to("cpu")
+        # The dict values are views into one (sources, channels, samples)
+        # tensor (api.py:288), so keeping a stem keeps all six alive — 254 MB
+        # on a 2-minute stereo clip, still resident while the fallback model
+        # loads. Clone to give the stem its own storage, then drop the rest.
+        stem = stems[stem_name].detach().to("cpu").clone()
         mix_rms = _rms(mix)
         rel = _rms(stem) / mix_rms if mix_rms > 0 else 0.0
         sr = sep.samplerate
-        # Drop the model and the other five stems before the caller decides
-        # whether to load a second model.
         del sep, stems, mix
         return stem, rel, sr
 

@@ -12,6 +12,7 @@ import array
 import io
 import math
 import os
+import re
 import sys
 import time
 import wave
@@ -31,6 +32,21 @@ from soloscribe.webapp import server  # noqa: E402
 
 GP5_BYTES = b"FICHIER GUITAR PRO v5.10\x00fake-but-nonempty"
 REPORT_HTML = "<!doctype html><title>Audit</title><p>4 of 5 notes matched.</p>"
+
+PIPELINE_SOURCE = (REPO_ROOT / "soloscribe" / "pipeline.py").read_text(encoding="utf-8")
+
+#: (stage name, fraction) for every progress report run_pipeline actually makes,
+#: read out of its source in file order. The web UI's checklist and progress bar
+#: are both derived from these strings, and neither is part of the frozen
+#: contract — so read them rather than assume them. A stage rename in the
+#: pipeline shows up here as a failure in this file, not as a stuck progress bar
+#: in front of the person using it.
+REPORTED_STAGES = [
+    (name, float(frac))
+    for name, frac in re.findall(
+        r'_report\(\s*progress\s*,\s*"([^"]+)"\s*,\s*([0-9.]+)\s*\)', PIPELINE_SOURCE
+    )
+]
 
 
 def _wav_bytes(seconds: float = 0.25, rate: int = 8000, freq: float = 220.0) -> bytes:
@@ -67,18 +83,21 @@ def _result(out_dir: str, *, warnings: list[str] | None = None) -> PipelineResul
 
 def _happy_pipeline(audio_path, out_dir, *, progress=None, **kwargs):
     assert os.path.exists(audio_path), "the server must save the upload before running"
-    for stage in ("load", "separate", "transcribe", "beat grid", "quantize",
-                  "fret", "write GP5", "audit", "HTML report"):
+    for stage, frac in REPORTED_STAGES:
         if progress is not None:
-            progress(stage, 1.0)
+            progress(stage, frac)
     _happy_pipeline.seen = kwargs
     return _result(out_dir, warnings=["Bars 9 to 12 were quiet; those notes are a guess."])
 
 
 def _boom_pipeline(audio_path, out_dir, *, progress=None, **kwargs):
     if progress is not None:
-        progress("load", 0.5)
+        progress("Listening", 0.02)
     raise RuntimeError("boom")
+
+
+def _unwired_pipeline(audio_path, out_dir, *, progress=None, **kwargs):
+    raise NotImplementedError("wired up during integration")
 
 
 @pytest.fixture
@@ -200,12 +219,49 @@ def test_pipeline_exception_becomes_a_job_error(client, monkeypatch):
     assert client.get(f"/api/jobs/{job_id}/report").status_code == 404
 
 
-def test_unimplemented_pipeline_is_reported_gracefully(client):
-    """No monkeypatch: today's real run_pipeline raises NotImplementedError."""
+def test_unimplemented_pipeline_is_reported_gracefully(client, monkeypatch):
+    """A NotImplementedError is a missing part of the app, not the user's fault.
+
+    run_pipeline was a stub when this server was written and is implemented now,
+    so the stub is faked rather than called. The branch stays because a stage
+    module can go back to raising it.
+    """
+    monkeypatch.setattr(server, "run_pipeline", _unwired_pipeline)
     job = _settle(client, _post(client).json()["job_id"])
     assert job["status"] == "error"
     assert "not connected" in job["error"]
+    assert "wired up during integration" not in job["error"], "spare him the jargon"
     assert "NotImplementedError" in job["error_detail"]
+
+
+class NoBackendError(Exception):
+    """Stands in for audioread's, which is raised carrying no message at all."""
+
+
+def test_an_undecodable_recording_is_explained_not_named(client, monkeypatch):
+    def undecodable(audio_path, out_dir, *, progress=None, **kwargs):
+        raise NoBackendError()
+
+    monkeypatch.setattr(server, "run_pipeline", undecodable)
+    job = _settle(client, _post(client).json()["job_id"])
+
+    assert job["status"] == "error"
+    assert job["error"] == server.PLAIN_ERRORS["NoBackendError"]
+    assert "NoBackendError" not in job["error"], "that word means nothing to him"
+    assert job["error_kind"] == "NoBackendError", "but David still needs the name"
+
+
+def test_a_silent_exception_does_not_leave_the_apology_empty(client, monkeypatch):
+    def mute(audio_path, out_dir, *, progress=None, **kwargs):
+        raise ValueError()
+
+    monkeypatch.setattr(server, "run_pipeline", mute)
+    job = _settle(client, _post(client).json()["job_id"])
+
+    assert job["status"] == "error"
+    assert job["error"] not in ("", "ValueError"), "a bare class name is not an apology"
+    assert len(job["error"]) > 20
+    assert job["error_kind"] == "ValueError"
 
 
 @pytest.mark.parametrize("filename", ["riff.txt", "riff.mp4", "riff"])
@@ -230,34 +286,66 @@ def test_nonsense_options_are_refused_with_a_readable_message(client, field, val
     assert len(response.json()["detail"]) > 10
 
 
-# The stages pipeline.py's docstring commits to, in the order it commits to.
-DOCUMENTED_STAGES = (
-    "load", "separate", "transcribe", "beat grid", "quantize", "fret",
-    "write GP5", "synthesize score", "audit vs original", "HTML report",
-)
+def test_the_pipeline_still_reports_stages_this_ui_can_read():
+    """Drift guard: the checklist is derived from strings pipeline.py owns."""
+    assert REPORTED_STAGES, "found no _report(progress, ...) calls to read"
+    unmapped = [name for name, _ in REPORTED_STAGES if server._match_stage(name) < 0]
+    assert not unmapped, f"no checklist step matches these pipeline stages: {unmapped}"
+
+    indices = [server._match_stage(name) for name, _ in REPORTED_STAGES]
+    assert indices == sorted(indices), (
+        "the pipeline reports stages in an order the checklist would walk "
+        f"backwards through: {list(zip([n for n, _ in REPORTED_STAGES], indices))}"
+    )
+    assert set(indices) == set(range(len(server.STAGES))), (
+        "every checklist step should correspond to a stage the pipeline reports; "
+        f"reached {sorted(set(indices))} of {len(server.STAGES)}"
+    )
 
 
-def test_checklist_never_walks_backwards_through_the_real_stage_order(client):
-    """Transcription runs before beat tracking, so the mapping must not un-tick."""
+def test_progress_fractions_are_whole_run_not_per_stage():
+    """The progress bar reads frac directly, which only holds if it is global."""
+    fracs = [frac for _, frac in REPORTED_STAGES]
+    assert fracs == sorted(fracs), f"fractions are not monotone: {fracs}"
+    assert fracs[-1] == 1.0, f"the last report should be 1.0, got {fracs[-1]}"
+    assert fracs[0] < 0.5, "a per-stage fraction would restart near 0 each stage"
+    # A per-stage reading would have several stages ending at 1.0.
+    assert fracs.count(1.0) == 1
+
+
+def test_checklist_and_bar_track_a_full_run_of_the_real_stages(client):
     job = server.Job(id="ordering")
     with server._LOCK:
         server._JOBS["ordering"] = job
     job.status = "running"
 
     seen = []
-    for stage in DOCUMENTED_STAGES:
-        server._record_progress("ordering", stage, 0.5)
+    for stage, frac in REPORTED_STAGES:
+        server._record_progress("ordering", stage, frac)
         seen.append((stage, job.step_index, job.overall))
 
-    unmapped = [entry["stage"] for entry in job.history if entry["step"] is None]
-    assert not unmapped, f"no checklist step matches {unmapped}"
     indices = [i for _, i, _ in seen]
-    assert indices == sorted(indices), f"checklist walked backwards: {seen}"
     overalls = [o for _, _, o in seen]
+    assert indices == sorted(indices), f"checklist walked backwards: {seen}"
     assert overalls == sorted(overalls), f"progress bar went backwards: {seen}"
     assert indices[0] == 0 and indices[-1] == len(server.STAGES) - 1
-    # Every checklist step is reached by at least one documented stage.
-    assert set(indices) == set(range(len(server.STAGES)))
+    assert not [entry for entry in job.history if entry["step"] is None]
+    # The bar shows what the pipeline reports, not a re-derivation of it. Re-
+    # deriving from the checklist position would have the bar reading 44 per
+    # cent while the pipeline was telling us 62.
+    assert overalls == [frac for _, frac in REPORTED_STAGES]
+
+
+def test_skipping_isolation_drops_it_from_the_checklist(client, monkeypatch):
+    monkeypatch.setattr(server, "run_pipeline", _happy_pipeline)
+
+    kept = _settle(client, _post(client, data={"separate": "auto"}).json()["job_id"])
+    skipped = _settle(client, _post(client, data={"separate": "off"}).json()["job_id"])
+
+    keys = lambda job: [step["key"] for step in job["steps"]]
+    assert "isolate" in keys(kept)
+    assert "isolate" not in keys(skipped), "do not promise a step that was skipped"
+    assert len(keys(skipped)) == len(keys(kept)) - 1
 
 
 def test_out_of_order_stages_do_not_un_tick_the_checklist(client):
@@ -267,13 +355,13 @@ def test_out_of_order_stages_do_not_un_tick_the_checklist(client):
         server._JOBS["jumbled"] = job
     job.status = "running"
 
-    server._record_progress("jumbled", "write GP5", 1.0)
+    server._record_progress("jumbled", "Writing the notation", 0.8)
     ahead = (job.step_index, job.overall)
-    server._record_progress("jumbled", "beat grid", 0.1)
+    server._record_progress("jumbled", "Finding the beat", 0.1)
 
     assert job.step_index == ahead[0], "a late-arriving early stage rewound the checklist"
     assert job.overall == ahead[1], "a late-arriving early stage rewound the progress bar"
-    assert job.stage == "beat grid", "the raw stage should still be reported honestly"
+    assert job.stage == "Finding the beat", "the raw stage should still be reported honestly"
 
 
 def test_an_unrecognised_stage_name_is_shown_rather_than_swallowed(client):

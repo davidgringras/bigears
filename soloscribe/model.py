@@ -138,23 +138,45 @@ class Score:
 
 
 def merge_adjacent_events(
-    events: list[NoteEvent], max_gap: float = 0.06, max_pitch_diff: int = 0
+    events: list[NoteEvent],
+    max_gap: float = 0.06,
+    max_pitch_diff: int = 0,
+    rearticulation_ratio: float = 0.85,
 ) -> list[NoteEvent]:
-    """Merge same-pitch events separated by tiny gaps (transcriber splits on decay)."""
+    """Merge same-pitch events separated by tiny gaps (transcriber splits on decay).
+
+    Merging runs per pitch chain, not against the last emitted event — an
+    interleaved event at another pitch must not block the repair of a
+    decay-split note (found by the transcribe module's tests).
+
+    Gap time alone cannot separate a decay split (~40 ms dip) from a genuine
+    repeated fast note (~30 ms articulation gap at 150 bpm 16ths) — measured
+    by the E2E harness as 3 of its 4 recall misses. The discriminator is
+    amplitude: a decay continuation is the quiet tail of a dying note, a
+    re-picked note has a fresh attack. Gaps ≤ 15 ms (about one analysis
+    frame) merge unconditionally; longer gaps only merge when the second
+    fragment is clearly quieter than the note's peak so far.
+    """
     if not events:
         return []
-    out: list[NoteEvent] = []
+    by_chain: dict[int, list[NoteEvent]] = {}
     for ev in sorted(events, key=lambda e: (e.start, e.pitch)):
-        if (
-            out
-            and abs(ev.pitch - out[-1].pitch) <= max_pitch_diff
-            and 0 <= ev.start - out[-1].end <= max_gap
-        ):
-            prev = out[-1]
-            prev.end = max(prev.end, ev.end)
-            prev.velocity = max(prev.velocity, ev.velocity)
-            prev.confidence = max(prev.confidence, ev.confidence)
-            prev.vibrato = prev.vibrato or ev.vibrato
-        else:
-            out.append(ev)
+        merged = False
+        for pitch in range(ev.pitch - max_pitch_diff, ev.pitch + max_pitch_diff + 1):
+            chain = by_chain.get(pitch)
+            if chain and 0 <= ev.start - chain[-1].end <= max_gap:
+                prev = chain[-1]
+                gap = ev.start - prev.end
+                if gap > 0.015 and ev.velocity > prev.velocity * rearticulation_ratio:
+                    continue  # fresh attack → a repeated note, not a split
+                prev.end = max(prev.end, ev.end)
+                prev.velocity = max(prev.velocity, ev.velocity)
+                prev.confidence = max(prev.confidence, ev.confidence)
+                prev.vibrato = prev.vibrato or ev.vibrato
+                merged = True
+                break
+        if not merged:
+            by_chain.setdefault(ev.pitch, []).append(ev)
+    out = [ev for chain in by_chain.values() for ev in chain]
+    out.sort(key=lambda e: (e.start, e.pitch))
     return out
