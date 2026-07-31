@@ -264,6 +264,17 @@ def test_a_silent_exception_does_not_leave_the_apology_empty(client, monkeypatch
     assert job["error_kind"] == "ValueError"
 
 
+def test_an_oversized_recording_is_refused_before_any_work_starts(client, monkeypatch):
+    """Cap tested by lowering it rather than by uploading 200 MB."""
+    monkeypatch.setattr(server, "MAX_UPLOAD_BYTES", 512)
+    response = _post(client, content=_wav_bytes(seconds=1.0))
+
+    assert response.status_code == 413
+    assert "200 MB" in response.json()["detail"]
+    with server._LOCK:
+        assert not server._JOBS
+
+
 @pytest.mark.parametrize("filename", ["riff.txt", "riff.mp4", "riff"])
 def test_non_audio_uploads_are_refused(client, filename):
     response = _post(client, filename=filename, content=b"not audio at all")

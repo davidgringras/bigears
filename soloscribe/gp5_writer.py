@@ -244,6 +244,7 @@ def write_gp5(score: Score, path: str) -> list[str]:
         return True
 
     cursor = 0
+    swing_label_pending = score.triplet_feel  # visible marking, not just the feel flag
     for onset, dur, group in verticals:
         if onset > cursor:  # rest gap
             gap_pos = cursor
@@ -262,6 +263,9 @@ def write_gp5(score: Score, path: str) -> list[str]:
             for cpos, clen in _decompose(note_pos - mi * bar_len, seg_end - note_pos, tpb, bar_len):
                 tie = (not first) or (first and group[0].tied_from_prev)
                 emit(mi, cpos, clen, group, tie)
+                if swing_label_pending:
+                    track.measures[mi].voices[0].beats[-1].text = "Swing 8ths"
+                    swing_label_pending = False
                 first = False
             note_pos = seg_end
         cursor = max(cursor, note_end)

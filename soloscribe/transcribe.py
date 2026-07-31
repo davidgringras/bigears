@@ -17,13 +17,19 @@ anyone "simplifies" the guards around it:
     *correct* note down an octave on one of the most common shapes in the
     idiom. Octave relabelling is consequently refused on any span that has a
     concurrent note and nothing at the target pitch (`_refine_solo`).
-  * an octave double-stop of comparable played loudness does not necessarily
-    reach basic-pitch as comparable *activation*: on a synthetic 52+64 pluck
-    pair at equal gain the upper note came back at 0.52× the lower's
-    amplitude, under GHOST_AMP_RATIO, and solo mode collapsed the pair to the
-    lower note. Loosening that ratio to rescue the case would blunt harmonic-
-    ghost rejection, which is the refinement's main earner and is much better
-    evidenced, so the trade is deliberately left where it is.
+  * OCTAVE DOUBLE-STOPS ARE NOT PRESERVED, and GHOST_AMP_RATIO=0.85 makes that
+    deliberate rather than incidental. An octave double-stop of comparable
+    played loudness does not reach basic-pitch as comparable *activation*: on a
+    synthetic 52+64 pluck pair at equal gain the upper note came back at 0.52×
+    the lower's, already under the old 0.60 ratio, so the pair collapsed to the
+    lower note even before the sweep. Raising the ratio therefore gives up a
+    capability that measurably did not work in exchange for ghost rejection
+    that measurably does. The cost is real for Wes-style octave playing and the
+    sweep is blind to it — none of the ground-truth licks contain an octave
+    double-stop, so "recall was flat" is a statement about material that has
+    none. If that repertoire matters, the discriminator to reach for is
+    duration (harmonic ghosts ran 90-165 ms against hosts of 185-230 ms), not
+    a further amplitude tweak.
 
 Verified against the installed basic-pitch 0.4.0 source:
 
@@ -110,7 +116,16 @@ CONTRA_SEMITONES = 1.5           # beyond this = contradicted
 OCTAVE_TOL = 0.7                 # tolerance around an exact 12 or 24
 MAX_OCTAVE_ERROR = 2             # relabel up to two octaves (4th harmonic)
 OVERLAP_FRAC = 0.5               # of the shorter note, to count as concurrent
-GHOST_AMP_RATIO = 0.6            # quieter than this × a concurrent note = ghost
+# Quieter than this × a concurrent note = ghost rather than a second voice.
+# Swept 0.60→0.90 over six ground-truth fixtures (3 licks × clean/pad): recall
+# was flat at every step on every lick, precision rose and plateaued at 0.85
+# (funk_e clean 0.826→0.974, funk_e pad 0.755→0.881, blues_a pad 0.833→0.926).
+# Recall cannot fall here by construction — raising it only converts "keep as
+# double-stop" into "relabel onto the host pitch", and the relabelled note is
+# then absorbed by `_dedup_overlaps` into a note that already exists, so no
+# pitch is ever removed outright. See the octave double-stop caveat in the
+# module docstring for what the sweep could NOT see.
+GHOST_AMP_RATIO = 0.85
 
 # --- vibrato --------------------------------------------------------------
 VIB_MIN_DUR = 0.25               # need ~1.5 cycles at the low end of the band
