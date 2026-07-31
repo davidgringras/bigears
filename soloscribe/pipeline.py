@@ -5,7 +5,9 @@ This is the single entry point the CLI and web UI call. Stages:
   load → (separate) → transcribe → beat grid → quantize → fret → write GP5
        → synthesize score → audit vs original → HTML report
 
-Interface is frozen; implementations land per-module.
+The beat grid is tracked on the FULL mix (the rhythm section carries the
+pulse); note transcription runs on the separated guitar stem when separation
+is active. Audit compares the finished score against both.
 """
 from __future__ import annotations
 
@@ -40,16 +42,114 @@ def run_pipeline(
     swing: str = "auto",             # "auto" | "on" | "off"
     separate: str = "auto",          # "auto" | "on" | "off"
     mode: str = "solo",              # "solo" (monophonic-biased) | "poly"
-    chords: str | None = None,       # 'Fmaj7|D7|Gm7 C7|F6' — bars split on |,
-                                     # two chords in a bar split on space
+    chords: str | None = None,       # 'Fmaj7|D7|Gm7 C7|F6' — bars split on |
     title: str = "",
     downbeat: float | None = None,   # seconds where beat 1 of bar 1 falls
     start: float | None = None,      # trim: analyze only [start, end] seconds
     end: float | None = None,
     progress: ProgressFn | None = None,
 ) -> PipelineResult:
-    """Run the full audio → GP5 → audit pipeline. Implemented in integration."""
-    raise NotImplementedError("wired up during integration")
+    import librosa
+    import soundfile as sf
+
+    from .quantize import build_beat_grid, parse_chords, quantize
+    from .fretting import assign_fretting
+    from .gp5_writer import write_gp5
+
+    ensure_out_dir(out_dir)
+    warnings: list[str] = []
+
+    _report(progress, "Listening", 0.02)
+    y, sr = librosa.load(audio_path, sr=22050, mono=True)
+    if start or end:
+        s = int((start or 0.0) * sr)
+        e = int(end * sr) if end else len(y)
+        y = y[max(0, s):min(len(y), e)]
+        if downbeat is not None and start:
+            downbeat = max(0.0, downbeat - start)
+    working = os.path.join(out_dir, "clip.wav")
+    sf.write(working, y, sr)
+    duration = len(y) / sr
+    _report(progress, "Listening", 0.06)
+
+    # Stem separation — transcribe the guitar, not the band.
+    stem_path: str | None = None
+    transcribe_src = working
+    if separate in ("auto", "on"):
+        _report(progress, "Isolating the guitar", 0.08)
+        try:
+            from .separate import separate as run_separation
+
+            sep = run_separation(working, out_dir)
+            stem_path = sep.stem_path
+            if separate == "auto" and sep.stem_rel_rms >= 0.90:
+                # Stem ≈ mix: the clip is already isolated guitar; separation
+                # could only add artifacts.
+                warnings.append(
+                    "clip already sounds like isolated guitar — used the original"
+                )
+                transcribe_src = working
+            else:
+                transcribe_src = stem_path
+        except Exception as exc:  # separation is an enhancement, never a wall
+            warnings.append(f"separation failed ({exc}); transcribed the full mix")
+        _report(progress, "Isolating the guitar", 0.35)
+
+    _report(progress, "Working out the notes", 0.38)
+    from .transcribe import transcribe
+
+    events = transcribe(transcribe_src, mode=mode)
+    if not events:
+        warnings.append("no notes detected — check the clip or try separate=off")
+    _report(progress, "Working out the notes", 0.62)
+
+    _report(progress, "Finding the beat", 0.64)
+    grid = build_beat_grid(
+        y, sr, bpm=bpm, downbeat=downbeat, beats_per_bar=beats_per_bar,
+        cover_until=duration,
+    )
+    _report(progress, "Finding the beat", 0.70)
+
+    _report(progress, "Writing the notation", 0.72)
+    chord_list = parse_chords(chords)
+    score = quantize(
+        events, grid, swing=swing, key=key, chords=chord_list, title=title,
+    )
+    fret_warnings = assign_fretting(score.qnotes, tuning=score.tuning, capo=score.capo)
+    warnings.extend(fret_warnings)
+    gp5_path = os.path.join(out_dir, _safe_name(title) + ".gp5")
+    warnings.extend(write_gp5(score, gp5_path))
+    _report(progress, "Writing the notation", 0.80)
+
+    _report(progress, "Checking my work against your recording", 0.82)
+    report_path: str | None = None
+    metrics: dict = {}
+    try:
+        from .audit import audit
+
+        metrics = audit(score, events, working, stem_path, out_dir, caveats=warnings)
+        report_path = os.path.join(out_dir, "report.html")
+        if not os.path.exists(report_path):
+            report_path = metrics.get("report_path")
+    except Exception as exc:
+        warnings.append(f"audit failed ({exc}); the GP5 was still written")
+    _report(progress, "Checking my work against your recording", 1.0)
+
+    return PipelineResult(
+        gp5_path=gp5_path,
+        report_path=report_path,
+        score=score,
+        events=events,
+        grid=grid,
+        metrics=metrics,
+        stem_path=stem_path,
+        warnings=warnings,
+    )
+
+
+def _safe_name(title: str) -> str:
+    keep = "".join(c if c.isalnum() or c in " -_" else "" for c in (title or "solo"))
+    return (keep.strip().replace(" ", "-") or "solo")[:60]
 
 
 def _report(progress: ProgressFn | None, stage: str, frac: float) -> None:

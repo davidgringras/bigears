@@ -58,8 +58,12 @@ from .model import NoteEvent, merge_adjacent_events
 ONSET_THRESHOLD = 0.5
 FRAME_THRESHOLD = 0.3
 MIN_NOTE_LENGTH_MS = 58.0        # ~1/32 at 130bpm; shorter than a bebop 16th
-GUITAR_MIN_HZ = 72.0             # ≈ MIDI 38, a hair under low E (82.4 Hz) for drop tunings
-GUITAR_MAX_HZ = 1500.0           # ≈ MIDI 90, above the 24th fret of the high E
+# basic-pitch's `constrain_frequency` zeroes whole semitone bins either side of
+# these (note_creation.py:321-328), so the pair below decodes to exactly MIDI
+# 38-89: the bottom of drop-D at one end, three semitones above the 24th fret
+# of the high E (MIDI 88) at the other.
+GUITAR_MIN_HZ = 72.0
+GUITAR_MAX_HZ = 1500.0
 
 # basic-pitch amplitude (mean frame activation) → MIDI velocity. Affine through
 # (AMP_LO, VEL_LO) and (AMP_HI, VEL_HI), then clipped: the observed amplitude
@@ -381,8 +385,9 @@ def transcribe(
     module docstring) or "poly" (basic-pitch only). Pitches outside
     [min_pitch, max_pitch] are dropped; the frequency gate handed to
     basic-pitch is the intersection of that range with the guitar band
-    (GUITAR_MIN_HZ..GUITAR_MAX_HZ), so widening max_pitch past ~90 does not by
-    itself admit higher notes.
+    (GUITAR_MIN_HZ..GUITAR_MAX_HZ), so at the default range the decoder sees
+    MIDI 38-89 and raising max_pitch past 89 does not by itself admit higher
+    notes. Narrowing either bound does tighten the gate.
     """
     if mode not in ("solo", "poly"):
         raise ValueError(f"mode must be 'solo' or 'poly', got {mode!r}")
