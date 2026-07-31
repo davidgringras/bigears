@@ -1,0 +1,414 @@
+"""Audio → NoteEvents, via basic-pitch with a monophonic-biased refinement pass.
+
+basic-pitch is a polyphonic transcriber, which is the wrong prior for a jazz
+guitar solo: it hears the second and fourth harmonics of a fat neck-pickup tone
+as extra notes, and on plucks with a weak fundamental it will sometimes place
+the whole note an octave high. "solo" mode therefore runs a pyin f0 contour
+alongside it and uses the contour — which is monophonic by construction, so it
+locks onto one voice and stays there — to relabel octave errors, drop harmonic
+ghosts, and mark vibrato. "poly" mode returns the raw basic-pitch reading.
+
+Verified against the installed basic-pitch 0.4.0 source:
+
+  * `predict(audio_path, model_or_model_path, onset_threshold, frame_threshold,
+    minimum_note_length, minimum_frequency, maximum_frequency,
+    multiple_pitch_bends, melodia_trick, debug_file, midi_tempo)`
+                                              — inference.py:414-425
+    NOTE: there is no `include_pitch_bends` parameter on `predict`. It exists
+    only on `model_output_to_notes` (note_creation.py:54) where it defaults to
+    True, so bends are always computed and passed through; requesting it on
+    `predict` would be a TypeError.
+  * `predict` returns `(model_output, midi_data, note_events)` with note_events
+    typed `List[Tuple[float, float, int, float, Optional[List[int]]]]`
+                                              — inference.py:426-430
+    unpacked in-package as
+    `for start_time, end_time, pitch, amplitude, pitch_bends in note_events`
+                                              — inference.py:483
+    Confirmed at runtime on a synthetic 3-pluck clip: element types are
+    (float64 start_s, float64 end_s, int64 midi_pitch, float32 amplitude,
+     list[int64] bends).
+  * BEND UNITS: `bends` are per-frame integer offsets "in units of 1/3
+    semitones" — note_creation.py:209-211, the divisor being
+    `CONTOURS_BINS_PER_SEMITONE = 3` (constants.py:24). Corroborated by the
+    package's own MIDI writer, which converts with
+    `np.round(np.array(pitch_bend) * 4096 / CONTOURS_BINS_PER_SEMITONE)` where
+    4096 ticks is one semitone — note_creation.py:254. So
+    semitones = bins / 3. One value per model frame, laid on an evenly spaced
+    grid across the note (note_creation.py:253), which is exactly the
+    normalized-0..1 convention NoteEvent.bend wants.
+  * `amplitude` is `np.mean(frames[start:end, freq_idx])`, a frame-activation
+    mean in [0, 1] — note_creation.py:426. The package's own velocity mapping
+    is `round(127 * amplitude)` (note_creation.py:245), which sends a typical
+    strong guitar note (observed amplitude ≈ 0.75-0.85) to 95-108 but leaves
+    quiet notes implausibly low; `_amp_to_velocity` below stretches the useful
+    part of that range instead.
+"""
+from __future__ import annotations
+
+import contextlib
+import io
+from dataclasses import dataclass
+
+import librosa
+import numpy as np
+
+from .model import NoteEvent, merge_adjacent_events
+
+# --- basic-pitch decoding -------------------------------------------------
+ONSET_THRESHOLD = 0.5
+FRAME_THRESHOLD = 0.3
+MIN_NOTE_LENGTH_MS = 58.0        # ~1/32 at 130bpm; shorter than a bebop 16th
+GUITAR_MIN_HZ = 72.0             # ≈ MIDI 38, a hair under low E (82.4 Hz) for drop tunings
+GUITAR_MAX_HZ = 1500.0           # ≈ MIDI 90, above the 24th fret of the high E
+
+# basic-pitch amplitude (mean frame activation) → MIDI velocity. Affine through
+# (AMP_LO, VEL_LO) and (AMP_HI, VEL_HI), then clipped: the observed amplitude
+# band on real playing is roughly 0.30-0.85, so strong notes land 88-110 and
+# quiet ones stay legible instead of collapsing toward silence.
+AMP_LO, VEL_LO = 0.25, 45.0
+AMP_HI, VEL_HI = 0.85, 110.0
+
+# Bend contour: emit only if the contour actually moves. A constant one-bin
+# offset is the argmax sitting off-centre, not a bend.
+BEND_MIN_RANGE = 0.5             # semitones, peak-to-peak
+BEND_MAX_POINTS = 32             # decimate long notes to keep the contour light
+
+# --- pyin contour (solo mode) --------------------------------------------
+PYIN_SR = 22050                  # matches basic-pitch's own rate (constants.py:36)
+PYIN_HOP = 256
+PYIN_FRAME = 2048
+PYIN_FMIN = 70.0
+PYIN_FMAX = 1600.0
+VOICED_PROB_MIN = 0.5
+REGION_INSET = 0.02              # trim attack/release before reading the contour
+MIN_REGION_FRAMES = 3
+MIN_VOICED_FRAC = 0.5            # below this the contour has no opinion
+
+AGREE_SEMITONES = 0.5            # |contour - pitch| within this = corroborated
+CONTRA_SEMITONES = 1.5           # beyond this = contradicted
+OCTAVE_TOL = 0.7                 # tolerance around an exact 12 or 24
+MAX_OCTAVE_ERROR = 2             # relabel up to two octaves (4th harmonic)
+OVERLAP_FRAC = 0.5               # of the shorter note, to count as concurrent
+GHOST_AMP_RATIO = 0.6            # quieter than this × a concurrent note = ghost
+
+# --- vibrato --------------------------------------------------------------
+VIB_MIN_DUR = 0.25               # need ~1.5 cycles at the low end of the band
+VIB_MIN_FRAMES = 12
+VIB_MIN_VOICED_FRAC = 0.8        # the FFT needs a near-complete series
+VIB_RATE_LO, VIB_RATE_HI = 4.0, 8.0          # Hz
+VIB_DEV_LO, VIB_DEV_HI = 0.15, 0.8           # semitones, peak deviation
+VIB_SEARCH_LO, VIB_SEARCH_HI = 2.0, 15.0     # Hz, where the peak must win
+VIB_PEAK_RATIO = 2.0             # peak must beat the in-search-band median by this
+
+
+def _amp_to_velocity(amp: float) -> int:
+    """basic-pitch amplitude in [0, 1] → MIDI velocity in [1, 127]."""
+    v = VEL_LO + (amp - AMP_LO) * (VEL_HI - VEL_LO) / (AMP_HI - AMP_LO)
+    return int(np.clip(round(v), 1, 127))
+
+
+def _velocity_to_amp(vel: int) -> float:
+    """Exact affine inverse of `_amp_to_velocity`, lossy only by its rounding.
+
+    Amplitude is not a NoteEvent field, but the ghost/double-stop rules are
+    stated in amplitude, so relative loudness is read back through here rather
+    than compared in the (offset) velocity domain.
+    """
+    return AMP_LO + (vel - VEL_LO) * (AMP_HI - AMP_LO) / (VEL_HI - VEL_LO)
+
+
+def _amp_to_confidence(amp: float) -> float:
+    """Prior belief a note is real, from its activation alone."""
+    return float(np.clip(0.30 + 0.75 * amp, 0.05, 0.99))
+
+
+def _bend_curve(bins: list[int] | None) -> list[tuple[float, float]]:
+    """Per-frame 1/3-semitone bins → (normalized time, semitones) pairs.
+
+    Returns [] when the contour does not move by at least BEND_MIN_RANGE — a
+    flat offset is the model's pitch-bin quantization, not a played bend.
+    """
+    if not bins or len(bins) < 2:
+        return []
+    semis = np.asarray(bins, dtype=float) / 3.0     # note_creation.py:209-211
+    if float(semis.max() - semis.min()) < BEND_MIN_RANGE:
+        return []
+    n = len(semis)
+    if n > BEND_MAX_POINTS:
+        idx = np.unique(np.linspace(0, n - 1, BEND_MAX_POINTS).round().astype(int))
+    else:
+        idx = np.arange(n)
+    times = idx / (n - 1)
+    return [(float(t), float(semis[i])) for t, i in zip(times, idx)]
+
+
+def _events_from_predictions(
+    note_events, min_pitch: int, max_pitch: int
+) -> list[NoteEvent]:
+    """basic-pitch tuples → NoteEvents, filtered to the requested pitch range."""
+    out: list[NoteEvent] = []
+    for start, end, pitch, amp, bends in note_events:
+        pitch = int(pitch)
+        if pitch < min_pitch or pitch > max_pitch or end <= start:
+            continue
+        amp = float(amp)
+        out.append(
+            NoteEvent(
+                start=float(start),
+                end=float(end),
+                pitch=pitch,
+                velocity=_amp_to_velocity(amp),
+                confidence=_amp_to_confidence(amp),
+                bend=_bend_curve(bends),
+            )
+        )
+    return out
+
+
+@dataclass
+class _Contour:
+    """A pyin f0 reading, in MIDI, with unvoiced frames left as NaN."""
+
+    times: np.ndarray
+    midi: np.ndarray
+    confident: np.ndarray        # bool: voiced, probable, and finite
+
+    def region(self, start: float, end: float) -> slice:
+        lo = int(np.searchsorted(self.times, start, side="left"))
+        hi = int(np.searchsorted(self.times, end, side="right"))
+        return slice(lo, hi)
+
+
+def _pyin_contour(audio_path: str) -> _Contour:
+    """Monophonic f0 track over the whole clip. `librosa.pyin` fills unvoiced
+    frames with NaN (fill_na default), so NaN is the unvoiced signal here."""
+    y, sr = librosa.load(audio_path, sr=PYIN_SR, mono=True)
+    f0, _voiced_flag, voiced_prob = librosa.pyin(
+        y,
+        fmin=PYIN_FMIN,
+        fmax=PYIN_FMAX,
+        sr=sr,
+        frame_length=PYIN_FRAME,
+        hop_length=PYIN_HOP,
+    )
+    midi = np.full(f0.shape, np.nan, dtype=float)
+    finite = np.isfinite(f0) & (f0 > 0)
+    midi[finite] = librosa.hz_to_midi(f0[finite])
+    confident = finite & (voiced_prob > VOICED_PROB_MIN)
+    times = librosa.times_like(f0, sr=sr, hop_length=PYIN_HOP)
+    return _Contour(times=times, midi=midi, confident=confident)
+
+
+def _inset_region(ev: NoteEvent) -> tuple[float, float]:
+    """Note span with attack/release trimmed, for notes long enough to spare it."""
+    inset = REGION_INSET if ev.duration > 6 * REGION_INSET else 0.0
+    return ev.start + inset, ev.end - inset
+
+
+def _contour_median(contour: _Contour, ev: NoteEvent) -> float | None:
+    """Median contour pitch over a note, or None if the contour is not confident."""
+    lo, hi = _inset_region(ev)
+    sl = contour.region(lo, hi)
+    n = sl.stop - sl.start
+    if n < MIN_REGION_FRAMES:
+        return None
+    conf = contour.confident[sl]
+    if conf.sum() < MIN_REGION_FRAMES or conf.mean() < MIN_VOICED_FRAC:
+        return None
+    return float(np.median(contour.midi[sl][conf]))
+
+
+def _octave_shift(delta: float) -> int:
+    """Semitone offset to the contour's octave, or 0 if `delta` is not octave-ish."""
+    for k in range(1, MAX_OCTAVE_ERROR + 1):
+        if abs(abs(delta) - 12 * k) <= OCTAVE_TOL:
+            return 12 * k * (1 if delta > 0 else -1)
+    return 0
+
+
+def _overlap_frac(a: NoteEvent, b: NoteEvent) -> float:
+    """Shared duration as a fraction of the shorter note."""
+    ov = min(a.end, b.end) - max(a.start, b.start)
+    if ov <= 0:
+        return 0.0
+    shorter = min(a.duration, b.duration)
+    return ov / shorter if shorter > 0 else 0.0
+
+
+def _detect_vibrato(contour: _Contour, ev: NoteEvent) -> bool:
+    """True when the note's f0 oscillates in the 4-8 Hz vibrato band.
+
+    Linearly detrended first so a bend or slide — a monotone ramp, however
+    large — cannot present as vibrato.
+    """
+    if ev.duration < VIB_MIN_DUR:
+        return False
+    lo, hi = _inset_region(ev)
+    sl = contour.region(lo, hi)
+    n = sl.stop - sl.start
+    if n < VIB_MIN_FRAMES:
+        return False
+    conf = contour.confident[sl]
+    if conf.mean() < VIB_MIN_VOICED_FRAC:
+        return False
+
+    # Uniformly sampled series: interpolate across the short unvoiced gaps.
+    series = contour.midi[sl].copy()
+    idx = np.arange(n)
+    series = np.interp(idx, idx[conf], series[conf])
+    series = series - np.polyval(np.polyfit(idx, series, 1), idx)
+
+    peak_dev = float(np.max(np.abs(series)))
+    if not (VIB_DEV_LO <= peak_dev <= VIB_DEV_HI):
+        return False
+
+    mag = np.abs(np.fft.rfft(series * np.hanning(n)))
+    freqs = np.fft.rfftfreq(n, d=PYIN_HOP / PYIN_SR)
+    band = (freqs >= VIB_SEARCH_LO) & (freqs <= VIB_SEARCH_HI)
+    if band.sum() < 3:
+        return False
+    peak = int(np.argmax(mag[band]))
+    peak_hz = float(freqs[band][peak])
+    peak_mag = float(mag[band][peak])
+    med = float(np.median(mag[band]))
+    if med > 0 and peak_mag < VIB_PEAK_RATIO * med:
+        return False
+    return VIB_RATE_LO <= peak_hz <= VIB_RATE_HI
+
+
+def _dedup_overlaps(events: list[NoteEvent]) -> list[NoteEvent]:
+    """Fold same-pitch events that overlap in time into one.
+
+    `merge_adjacent_events` only joins events separated by a gap, so octave
+    relabelling — which can drop a ghost squarely on top of the note it was a
+    harmonic of — needs this second, overlap-aware pass.
+    """
+    out: list[NoteEvent] = []
+    for ev in sorted(events, key=lambda e: (e.pitch, e.start)):
+        if out and out[-1].pitch == ev.pitch and ev.start < out[-1].end:
+            prev = out[-1]
+            prev.end = max(prev.end, ev.end)
+            if ev.velocity > prev.velocity:
+                prev.velocity = ev.velocity
+                prev.bend = ev.bend
+            prev.confidence = max(prev.confidence, ev.confidence)
+            prev.vibrato = prev.vibrato or ev.vibrato
+        else:
+            out.append(ev)
+    return sorted(out, key=lambda e: (e.start, e.pitch))
+
+
+def _refine_solo(events: list[NoteEvent], audio_path: str) -> list[NoteEvent]:
+    """Use a monophonic f0 contour to fix octaves, drop ghosts, mark vibrato."""
+    if not events:
+        return events
+    contour = _pyin_contour(audio_path)
+    medians = [_contour_median(contour, ev) for ev in events]
+    amps = [_velocity_to_amp(ev.velocity) for ev in events]
+
+    kept: list[NoteEvent] = []
+    for i, ev in enumerate(events):
+        med = medians[i]
+        if med is None:                       # contour has no opinion — leave it
+            kept.append(ev)
+            continue
+        delta = med - ev.pitch
+        shift = _octave_shift(delta)
+
+        if shift:
+            # Either a genuine octave error or a harmonic of a note that is
+            # already transcribed correctly. The two are distinguished by
+            # whether a *comparably loud* note already sits at the target
+            # pitch: that is a real octave double-stop and must survive.
+            host = next(
+                (
+                    j
+                    for j, other in enumerate(events)
+                    if j != i
+                    and other.pitch == ev.pitch + shift
+                    and _overlap_frac(ev, other) >= OVERLAP_FRAC
+                ),
+                None,
+            )
+            if host is not None and amps[i] >= GHOST_AMP_RATIO * amps[host]:
+                ev.confidence *= 0.7          # plausible double-stop, kept
+                kept.append(ev)
+                continue
+            ev.pitch += shift                 # relabel; _dedup_overlaps may absorb it
+            ev.confidence *= 0.85
+            kept.append(ev)
+            continue
+
+        if abs(delta) > CONTRA_SEMITONES:
+            louder = any(
+                amps[i] < GHOST_AMP_RATIO * amps[j]
+                and _overlap_frac(ev, other) >= OVERLAP_FRAC
+                for j, other in enumerate(events)
+                if j != i
+            )
+            if louder:
+                continue                      # ghost: quiet, contradicted, masked
+            ev.confidence *= 0.7              # contradicted but unmasked — keep
+            kept.append(ev)
+            continue
+
+        if abs(delta) <= AGREE_SEMITONES:
+            ev.confidence += (1.0 - ev.confidence) * 0.5
+        else:
+            ev.confidence *= 0.9
+        kept.append(ev)
+
+    kept = _dedup_overlaps(kept)
+    for ev in kept:
+        ev.vibrato = _detect_vibrato(contour, ev)
+        if ev.vibrato:
+            # The vibrato flag carries the oscillation; a wobbling bend curve
+            # alongside it would be notated twice.
+            ev.bend = []
+        ev.confidence = float(np.clip(ev.confidence, 0.02, 1.0))
+    return kept
+
+
+def transcribe(
+    audio_path: str,
+    mode: str = "solo",
+    min_pitch: int = 38,
+    max_pitch: int = 92,
+) -> list[NoteEvent]:
+    """Transcribe `audio_path` to NoteEvents, ascending by (start, pitch).
+
+    `mode` is "solo" (basic-pitch plus the pyin refinement described in the
+    module docstring) or "poly" (basic-pitch only). Pitches outside
+    [min_pitch, max_pitch] are dropped; the frequency gate handed to
+    basic-pitch is the intersection of that range with the guitar band
+    (GUITAR_MIN_HZ..GUITAR_MAX_HZ), so widening max_pitch past ~90 does not by
+    itself admit higher notes.
+    """
+    if mode not in ("solo", "poly"):
+        raise ValueError(f"mode must be 'solo' or 'poly', got {mode!r}")
+
+    from basic_pitch.inference import predict
+
+    min_hz = max(GUITAR_MIN_HZ, float(librosa.midi_to_hz(min_pitch - 0.5)))
+    max_hz = min(GUITAR_MAX_HZ, float(librosa.midi_to_hz(max_pitch + 0.5)))
+
+    # The CoreML backend prints per-window `isfinite/shape/dtype` debug lines
+    # (inference.py:156-158) plus a banner (inference.py:449); on a 2-minute
+    # clip that is a few hundred lines of noise through the pipeline's stdout.
+    with contextlib.redirect_stdout(io.StringIO()):
+        _model_output, _midi, note_events = predict(
+            audio_path,
+            onset_threshold=ONSET_THRESHOLD,
+            frame_threshold=FRAME_THRESHOLD,
+            minimum_note_length=MIN_NOTE_LENGTH_MS,
+            minimum_frequency=min_hz,
+            maximum_frequency=max_hz,
+            melodia_trick=True,
+        )
+
+    events = _events_from_predictions(note_events, min_pitch, max_pitch)
+    events = merge_adjacent_events(events)
+    if mode == "solo":
+        events = _refine_solo(events, audio_path)
+        events = merge_adjacent_events(events)
+    return sorted(events, key=lambda e: (e.start, e.pitch))
