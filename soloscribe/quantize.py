@@ -19,6 +19,19 @@ import numpy as np
 from .model import BeatGrid, NoteEvent, QNote, Score, TICKS_PER_QUARTER
 
 
+_SUBDIVS = np.array([0.0, 0.25, 1 / 3, 0.5, 2 / 3, 0.75, 1.0])
+
+
+def _subdiv_fit(ons: np.ndarray, period: float) -> tuple[float, float]:
+    """(mean distance to nearest legal subdivision, best phase) for a period."""
+    cands = np.arange(0.0, period, 0.002)
+    fr = ((ons[None, :] - cands[:, None]) / period) % 1.0
+    d = np.abs(fr[:, :, None] - _SUBDIVS[None, None, :]).min(axis=2)
+    sums = d.mean(axis=1)
+    i = int(np.argmin(sums))
+    return float(sums[i]), float(cands[i])
+
+
 def build_beat_grid(
     y: np.ndarray,
     sr: int,
@@ -28,6 +41,7 @@ def build_beat_grid(
     beats_per_bar: int = 4,
     cover_until: float | None = None,
     onsets: list[float] | None = None,
+    durations: list[float] | None = None,
 ) -> BeatGrid:
     """Track beats in the audio; extrapolate so the grid covers the whole clip."""
     import librosa
@@ -50,15 +64,85 @@ def build_beat_grid(
     # and tie-split drift for exactly that reason. Minimizing each onset's
     # distance to its NEAREST legal grid position is phase estimation with
     # the same model the quantizer uses.
+    # NO tempo given at all: estimate period AND phase jointly from the
+    # played notes. The audio tracker alone half-timed a real jazz clip
+    # (54.98 against a true 110, GuitarSet bench). No single statistic
+    # settles the tempo OCTAVE — measured failures of each candidate:
+    # fractional fit cost favors halving (same ms jitter shrinks as a
+    # fraction of a longer beat); seconds cost favors doubling (finer grids
+    # fit anything); onbeat×support favors doubling on eighths-dominated
+    # lines (every note becomes a beat, support barely drops); and the
+    # interior-population band alone is defeated by lines carrying two
+    # metrical levels (blues 8ths+16ths read as 184's 8ths). What finally
+    # separates the octaves everywhere measured is DURATIONS — notes last a
+    # characteristic fraction of the true beat (band 0.22–0.80 of a period,
+    # median) — used as a cull alongside the interior band, with
+    # onbeat×support−4·seconds_cost scoring the survivors. Measured, cold:
+    # blues 91.9/92, bebop 150.2/150, funk 104.2/104, real jazz 112.3/110.
+    if (bpm is None and downbeat is None
+            and onsets is not None and len(onsets) >= 8):
+        import librosa as _lr
+
+        ons = np.asarray(sorted(onsets))
+        t0 = float(np.atleast_1d(_lr.feature.tempo(y=y, sr=sr))[0]) or 120.0
+        # Two opposed witnesses break the octave degeneracy that a fit cost
+        # cannot (fractional cost favors halving; seconds cost favors
+        # doubling, since a finer grid fits anything better):
+        #   on-beat fraction  — halve the tempo and half the true beats
+        #                       stop being beats, so it collapses;
+        #   beat support      — double the tempo and phantom beats appear
+        #                       that carry no notes, so it collapses.
+        best = None  # (score, bpm, period, phase)
+        for mult in (0.5, 1.0, 2.0):
+            base = t0 * mult
+            if not 40 <= base <= 240:
+                continue
+            for cand_bpm in np.arange(base * 0.92, base * 1.08, base * 0.004):
+                p_ = 60.0 / cand_bpm
+                frac_cost, phi = _subdiv_fit(ons, p_)
+                sec_cost = frac_cost * p_
+                rel = ((ons - phi) / p_) % 1.0
+                dist_s = np.minimum(rel, 1.0 - rel) * p_
+                onbeat = float(np.mean(dist_s < 0.045))
+                # The share of notes living at interior subdivisions is the
+                # octave's fingerprint: real lines put SOME notes off the
+                # beat (offbeat eighths, syncopation) but never nearly all.
+                # Doubled tempo empties the interior (everything lands on a
+                # "beat"); halved tempo overloads it. Candidates outside the
+                # band are culled rather than merely penalized — the score
+                # below rewards density and would otherwise still pick them.
+                interior = 1.0 - onbeat
+                if not (0.08 <= interior <= 0.75):
+                    continue
+                # Durations are the octave's second witness, independent of
+                # onset positions: notes last a characteristic fraction of
+                # the true beat. Doubled tempo makes typical notes "longer
+                # than a beat"; halved makes them slivers.
+                if durations is not None and len(durations) >= 8:
+                    med_beats = float(np.median(durations)) / p_
+                    if not (0.22 <= med_beats <= 0.80):
+                        continue
+                beats_n = max(1, int((ons[-1] - phi) / p_) + 1)
+                idx = np.unique(np.round((ons - phi) / p_).astype(int))
+                support = float(len(idx[(idx >= 0) & (idx < beats_n)]) / beats_n)
+                prior = 1.0 if 60 <= cand_bpm <= 190 else 0.85
+                score = (onbeat * support * prior) - 4.0 * sec_cost
+                if best is None or score > best[0]:
+                    best = (score, cand_bpm, p_, phi)
+        if best is not None:
+            _, _, period_fit, phase_fit = best
+            bpm = 60.0 / period_fit
+            downbeat = phase_fit + np.floor(
+                (float(ons[0]) - phase_fit) / period_fit + 0.30) * period_fit
+            if downbeat < -period_fit * 0.25:
+                downbeat += period_fit
+            # falls through to the metronomic path below
+
     if (bpm is not None and bpm > 0 and downbeat is None
             and onsets is not None and len(onsets) >= 4):
         period = 60.0 / float(bpm)
         ons = np.asarray(sorted(onsets))
-        subdivs = np.array([0.0, 0.25, 1 / 3, 0.5, 2 / 3, 0.75, 1.0])
-        cands = np.arange(0.0, period, 0.002)
-        fr = ((ons[None, :] - cands[:, None]) / period) % 1.0
-        d = np.abs(fr[:, :, None] - subdivs[None, None, :]).min(axis=2)
-        phase = float(cands[int(np.argmin(d.sum(axis=1)))])
+        _, phase = _subdiv_fit(ons, period)
         # Bar 1 starts with the music: the beat at-or-just-before the first
         # onset is the downbeat (an onset within 30% of a beat after it
         # counts as ON it, so no artificial pickup bar appears).
