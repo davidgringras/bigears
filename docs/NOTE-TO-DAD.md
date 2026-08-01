@@ -25,9 +25,8 @@ https://davidgringras.github.io/soloscribe/
 And you can try it yourself, today, on any device — upload a clip here:
 https://huggingface.co/spaces/DGring/soloscribe
 
-Send me the clip (the 1.5-minute solo you mentioned), the key, the tempo if
-you know it, and a photo of the chart, and I'll run it and send you back the
-.gp5, a PDF of the notation, and the report. If it embarrasses itself on
-real jazz guitar, we'll know precisely how, which is the point.
+Try it on the clip you mentioned — the 1.5-minute solo — with the key and
+rough tempo typed in, and see what comes back. If it embarrasses itself on
+real jazz guitar, the report will say precisely how, which is the point.
 
 x
