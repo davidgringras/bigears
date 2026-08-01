@@ -1,4 +1,4 @@
-/* SoloScribe — the whole front end. No framework, no build step, no network
+/* Big Ears — the whole front end. No framework, no build step, no network
    beyond this machine. Pick a file, post it, poll the job, offer the results. */
 (function () {
   "use strict";
@@ -254,7 +254,7 @@
     });
     request.addEventListener("error", function () {
       els.submit.disabled = false;
-      fail("I lost contact with SoloScribe. Is the window that started it still open?");
+      fail("I lost contact with Big Ears. Is the window that started it still open?");
     });
     request.send(data);
   }
@@ -275,7 +275,7 @@
       .then(render)
       .catch(function () {
         stopPolling();
-        fail("I lost contact with SoloScribe. Is the window that started it still open?");
+        fail("I lost contact with Big Ears. Is the window that started it still open?");
       });
   }
 

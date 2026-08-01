@@ -1,4 +1,4 @@
-"""SoloScribe on Hugging Face Spaces — the same pipeline, reachable from a phone.
+"""Big Ears on Hugging Face Spaces — the same pipeline, reachable from a phone.
 
 The desktop app (``soloscribe/webapp/``) assumes a Mac with the repo checked
 out. This is the same ``run_pipeline`` behind a Gradio page, so a guitarist can
@@ -500,7 +500,7 @@ def transcribe_solo(
 # --------------------------------------------------------------------------
 
 INTRO = """
-# SoloScribe
+# Big Ears
 
 Give me a recording of a solo and I will write it out for you: a Guitar Pro
 file you can slow down, loop and read, and an honest report on how much of it
@@ -520,7 +520,7 @@ a scratch folder on a machine that forgets them when it restarts.
 
 def build_ui() -> gr.Blocks:
     # theme belongs on launch() from Gradio 6.0 onward; passing it here warns.
-    with gr.Blocks(title="SoloScribe") as demo:
+    with gr.Blocks(title="Big Ears") as demo:
         gr.Markdown(INTRO)
 
         with gr.Row():

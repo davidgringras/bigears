@@ -1,4 +1,4 @@
-# SoloScribe on Hugging Face Spaces — Linux, CPU only, Python 3.10.
+# Big Ears on Hugging Face Spaces — Linux, CPU only, Python 3.10.
 #
 # Read space/README.md before changing anything here. Four of these lines are
 # load-bearing for reasons that are not obvious from the package names, and one

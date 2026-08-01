@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SoloScribe — watch a machine read music</title>
+<title>Big Ears — watch a machine read music</title>
 <meta name="description" content="A guitar solo goes in. Notation, tab and an honest, measured account of how much to trust come out. Press play and watch it read the music.">
-<meta property="og:title" content="SoloScribe — watch a machine read music">
+<meta property="og:title" content="Big Ears — watch a machine read music">
 <meta property="og:description" content="A guitar solo goes in. Notation, tab and an honest account of how much to trust come out. Press play and watch it read the music.">
-<meta property="og:image" content="https://davidgringras.github.io/soloscribe/site/assets/og.png">
+<meta property="og:image" content="https://davidgringras.github.io/bigears/site/assets/og.png">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='80' font-size='80'%3E%F0%9F%8E%B8%3C/text%3E%3C/svg%3E">
@@ -221,14 +221,14 @@
   <canvas id="sky" aria-hidden="true"></canvas>
   <div class="hero-inner">
     <div class="overline">A machine that reads music — and shows its working</div>
-    <h1>SoloScribe<br><span class="flourish">listens.</span></h1>
+    <h1>Big Ears<br><span class="flourish">listens.</span></h1>
     <p class="lede">A guitar solo goes in. Notation, tab and playable fingerings
     come out in a Guitar Pro file — with an honest, measured account of how
     much of it to trust.</p>
     <div class="hero-cta">
       <a class="btn primary" href="#stage" id="ctaWatch">▶&nbsp; Watch it read the music</a>
-      <a class="btn" href="https://huggingface.co/spaces/DGring/soloscribe">Try it on your own solo</a>
-      <a class="btn" href="https://github.com/davidgringras/soloscribe">The code</a>
+      <a class="btn" href="https://huggingface.co/spaces/DGring/bigears">Try it on your own solo</a>
+      <a class="btn" href="https://github.com/davidgringras/bigears">The code</a>
     </div>
   </div>
   <div class="scroll-hint" aria-hidden="true">↓</div>
@@ -264,11 +264,11 @@
       <p class="sub">Straight from the pipeline: F major, swing marked the way real
       jazz charts mark it, chords over the bars, triplets bracketed, fingerings
       chosen. Rendered by MuseScore from the very .gp5 file you can download below.</p>
-      <div class="scorebox"><img src="https://davidgringras.github.io/soloscribe/site/assets/score-1.svg" alt="The transcribed score: eight bars of notation" loading="lazy"></div>
+      <div class="scorebox"><img src="https://davidgringras.github.io/bigears/site/assets/score-1.svg" alt="The transcribed score: eight bars of notation" loading="lazy"></div>
       <div class="chart-links">
-        <a class="chip gold" href="https://davidgringras.github.io/soloscribe/site/report.html">Open the full audit report</a>
-        <a class="chip" href="https://davidgringras.github.io/soloscribe/site/score.pdf">Score as PDF</a>
-        <a class="chip" href="https://davidgringras.github.io/soloscribe/site/assets/demo.gp5" download>The .gp5 itself</a>
+        <a class="chip gold" href="https://davidgringras.github.io/bigears/site/report.html">Open the full audit report</a>
+        <a class="chip" href="https://davidgringras.github.io/bigears/site/score.pdf">Score as PDF</a>
+        <a class="chip" href="https://davidgringras.github.io/bigears/site/assets/demo.gp5" download>The .gp5 itself</a>
       </div>
     </div>
   </div>
@@ -285,7 +285,7 @@
     <p class="reveal">So the interesting problem was never "audio in, tab out".
     It was the question a musician asks next: <strong style="color:var(--text-d)">can't
     you check your work against the original?</strong> That question is this tool.
-    After transcribing, SoloScribe plays its own transcription back, lines it up
+    After transcribing, Big Ears plays its own transcription back, lines it up
     against your recording, scores the agreement bar by bar, and hands you a
     verdict it is prepared to defend — including "medium" or "low" when that is
     the truth. Your cleanup time goes exactly where it is needed, with the
@@ -346,7 +346,7 @@
     </table>
     </div>
     <p class="quiet reveal">Full methodology and everything it can't do:
-    <a href="https://github.com/davidgringras/soloscribe/blob/main/docs/VALIDATION.md" style="color:var(--brass-deep)">VALIDATION.md</a>.
+    <a href="https://github.com/davidgringras/bigears/blob/main/docs/VALIDATION.md" style="color:var(--brass-deep)">VALIDATION.md</a>.
     Real recordings land below synthetic numbers — which is what the per-run
     report is for.</p>
   </div>
@@ -376,8 +376,8 @@
     <div class="twocard">
       <div class="way reveal">
         <h3>In your browser, right now</h3>
-        <p><a href="https://huggingface.co/spaces/DGring/soloscribe" style="color:var(--brass-deep)"><strong>Open
-        SoloScribe on the web</strong></a> — upload the clip, get the Guitar
+        <p><a href="https://huggingface.co/spaces/DGring/bigears" style="color:var(--brass-deep)"><strong>Open
+        Big Ears on the web</strong></a> — upload the clip, get the Guitar
         Pro file and the report back. The full works, including guitar
         isolation (which takes a few patient minutes on the free computer it
         runs on). If it has been asleep, the first visit takes a minute to
@@ -406,21 +406,21 @@
     you can drag to the bin.</p>
     <ol class="steps">
       <li class="reveal"><strong>Download it.</strong>
-        <a href="https://github.com/davidgringras/soloscribe/archive/refs/heads/main.zip" style="color:var(--brass-hi)">Click
+        <a href="https://github.com/davidgringras/bigears/archive/refs/heads/main.zip" style="color:var(--brass-hi)">Click
         here for the ZIP</a>, then double-click the downloaded file &mdash; you get a
-        folder called <code>soloscribe-main</code>. Drag it somewhere sensible,
+        folder called <code>bigears-main</code>. Drag it somewhere sensible,
         like your home folder.</li>
       <li class="reveal"><strong>Open Terminal</strong> (press
         <code>&#8984;&nbsp;space</code>, type "Terminal", press return) and paste
         these two lines, pressing return after each:<br>
-        <code>cd ~/soloscribe-main</code><br>
+        <code>cd ~/bigears-main</code><br>
         <code>bash bin/install.sh</code><br>
         The installer checks what your Mac already has and <em>tells you
         exactly what to do</em> if anything is missing &mdash; at most it asks you
         to paste one more line and run it again. The big download takes ten
         minutes or so; make the tea.</li>
       <li class="reveal"><strong>Start it.</strong> When the installer says
-        "Done", double-click <em>Start&nbsp;SoloScribe</em> in the
+        "Done", double-click <em>Start&nbsp;Big Ears</em> in the
         <code>bin</code> folder (or paste the start line the installer prints).
         The app opens in your browser, and from then on it is always two
         clicks away.</li>
@@ -444,7 +444,7 @@
 
 <footer class="dark">
   <p>Open source, no accounts, no uploads —
-  <a href="https://github.com/davidgringras/soloscribe">github.com/davidgringras/soloscribe</a></p>
+  <a href="https://github.com/davidgringras/bigears">github.com/davidgringras/bigears</a></p>
   <p class="sig">Built by David with Claude, for a guitarist who asked exactly
   the right question.</p>
 </footer>
@@ -452,7 +452,7 @@
 <script>
 (function () {
   "use strict";
-  const ASSETS = "https://davidgringras.github.io/soloscribe/site/assets/";
+  const ASSETS = "https://davidgringras.github.io/bigears/site/assets/";
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   /* ---------- scroll reveals ---------- */
@@ -631,7 +631,7 @@
       bufs.A = parts[0]; bufs.B = parts[1]; ready = true;
     } catch (e) {
       cap.innerHTML = "The demo audio couldn't load on this connection — the " +
-        "<a href='https://davidgringras.github.io/soloscribe/site/report.html'>full report</a> has the same players.";
+        "<a href='https://davidgringras.github.io/bigears/site/report.html'>full report</a> has the same players.";
     }
     playBtn.disabled = false; playBtn.textContent = "▶"; loading = false;
     return ready;

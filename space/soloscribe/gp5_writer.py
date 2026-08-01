@@ -155,7 +155,7 @@ def write_gp5(score: Score, path: str) -> list[str]:
     song = gp.Song()
     song.title = score.title or "Transcription"
     song.subtitle = score.subtitle
-    song.artist = "Transcribed by soloscribe"
+    song.artist = "Transcribed by Big Ears"
     song.tempo = max(30, min(320, round(score.tempo_bpm)))
     track = song.tracks[0]
     track.name = "Guitar"

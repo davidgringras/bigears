@@ -29,8 +29,8 @@ def main(target: str) -> None:
     readme = os.path.join(target, "README.md")
     with open(readme, "w") as f:
         f.write(
-            "# SoloScribe (web)\n\nDeploy snapshot of "
-            "[soloscribe](https://github.com/davidgringras/soloscribe) for "
+            "# Big Ears (web)\n\nDeploy snapshot of "
+            "[soloscribe](https://github.com/davidgringras/bigears) for "
             "Streamlit Community Cloud. Do not edit here — run "
             "`webapp-cloud/make_web.py` in the main repository and push.\n"
         )

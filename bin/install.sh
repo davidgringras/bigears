@@ -1,5 +1,5 @@
 #!/bin/bash
-# Sets SoloScribe up on this Mac. Safe to run again at any time.
+# Sets Big Ears up on this Mac. Safe to run again at any time.
 #
 #   bash bin/install.sh
 
@@ -10,14 +10,14 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BREW_PYTHON="/opt/homebrew/opt/python@3.11/bin/python3.11"
 VENV="$REPO_ROOT/.venv"
 
-echo "Setting up SoloScribe"
+echo "Setting up Big Ears"
 echo "Folder: $REPO_ROOT"
 echo
 
 # 1. Homebrew ---------------------------------------------------------------
 
 if ! command -v brew > /dev/null 2>&1; then
-  echo "Homebrew is missing. SoloScribe needs it to install Python 3.11."
+  echo "Homebrew is missing. Big Ears needs it to install Python 3.11."
   echo
   echo "Copy the line below, paste it into Terminal, press return, and follow"
   echo "the instructions it gives you:"
@@ -61,7 +61,7 @@ fi
 # 4. The parts --------------------------------------------------------------
 
 echo
-echo "Installing the parts SoloScribe needs."
+echo "Installing the parts Big Ears needs."
 echo "The first run downloads a lot and can take ten minutes or more."
 echo
 
@@ -76,16 +76,16 @@ fi
 
 # 5. Finish -----------------------------------------------------------------
 
-chmod +x "$REPO_ROOT/bin/Start SoloScribe.command" 2> /dev/null
+chmod +x "$REPO_ROOT/bin/Start Big Ears.command" 2> /dev/null
 # A ZIP downloaded in a browser arrives quarantined, and macOS then blocks
 # double-clicking the launcher. Running this installer was the user's own
 # deliberate act in Terminal, so clearing the flag on our own launcher here
 # is the honest fix — it makes double-click work from now on.
-xattr -d com.apple.quarantine "$REPO_ROOT/bin/Start SoloScribe.command" 2> /dev/null
+xattr -d com.apple.quarantine "$REPO_ROOT/bin/Start Big Ears.command" 2> /dev/null
 
 echo
 echo "Done."
-echo "Now double-click Start SoloScribe.command in the bin folder,"
+echo "Now double-click Start Big Ears.command in the bin folder,"
 echo "or start it right here with:"
 echo
-echo "  \"$REPO_ROOT/bin/Start SoloScribe.command\""
+echo "  \"$REPO_ROOT/bin/Start Big Ears.command\""

@@ -12,7 +12,7 @@ Two deliberate constraints:
     worse experience than three sequential ones, and the ``queued`` status
     exists precisely so the page can say so.
   * No authentication. Bind to 127.0.0.1 and keep it that way — see
-    ``bin/Start SoloScribe.command``.
+    ``bin/Start Big Ears.command``.
 
 The job store is process-local, so this must run under a single uvicorn worker.
 """
@@ -117,7 +117,7 @@ STAGES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
 )
 STAGE_KEYS = tuple(key for key, _, _ in STAGES)
 
-app = FastAPI(title="SoloScribe", docs_url=None, redoc_url=None, openapi_url=None)
+app = FastAPI(title="Big Ears", docs_url=None, redoc_url=None, openapi_url=None)
 
 
 # --------------------------------------------------------------------------

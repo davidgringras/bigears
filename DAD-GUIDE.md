@@ -1,4 +1,4 @@
-# SoloScribe — a guide for the guitarist
+# Big Ears — a guide for the guitarist
 
 You give it a recording of a solo. It gives you back two things:
 
@@ -17,7 +17,7 @@ needed.
 
 ## The no-install way
 
-There is a web version at https://huggingface.co/spaces/DGring/soloscribe —
+There is a web version at https://huggingface.co/spaces/DGring/bigears —
 upload the clip, get the Guitar Pro file and report back. It does everything,
 just slower than a Mac of your own (and if it has been asleep, the first
 visit takes a minute to wake). For regular use, the Mac version below is the
@@ -29,18 +29,18 @@ You need a Mac with an Apple chip (any from about 2021 on — About This Mac
 says "Apple M1/M2/M3/M4") and ~3 GB free.
 
 1. Download the ZIP from
-   https://github.com/davidgringras/soloscribe/archive/refs/heads/main.zip
-   and double-click it — you get a folder called `soloscribe-main`. Put it
+   https://github.com/davidgringras/bigears/archive/refs/heads/main.zip
+   and double-click it — you get a folder called `bigears-main`. Put it
    in your home folder.
 2. Open Terminal (⌘-space, type "Terminal", return) and paste, with a
    return after each line:
 
-       cd ~/soloscribe-main
+       cd ~/bigears-main
        bash bin/install.sh
 
    The installer tells you exactly what to do if anything is missing, and
    the big download takes about ten minutes.
-3. When it says "Done", double-click **Start SoloScribe** in the `bin`
+3. When it says "Done", double-click **Start Big Ears** in the `bin`
    folder. From then on it is always two clicks away.
 
 Why bother, when there may one day be a web version? Speed and privacy: on
@@ -49,7 +49,7 @@ to use the Mac's graphics cores, and the recording never leaves the machine.
 
 ## Using it
 
-Double-click **Start SoloScribe** (in the `bin` folder). Your browser opens
+Double-click **Start Big Ears** (in the `bin` folder). Your browser opens
 the app. Then:
 
 1. **Drop your recording in.** MP3, WAV, M4A — whatever you have. A clip

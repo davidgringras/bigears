@@ -398,7 +398,7 @@ def test_index_and_static_assets_are_served(client):
     page = client.get("/")
     assert page.status_code == 200
     body = page.text
-    assert "SoloScribe" in body
+    assert "Big Ears" in body
     for asset in ("/static/style.css", "/static/app.js"):
         assert asset in body
         assert client.get(asset).status_code == 200

@@ -39,22 +39,33 @@ def build_beat_grid(
     # re-introduce phase errors (a syncopated line pulls the tracker toward
     # the offbeats; comb-energy correction is circular for the same reason).
     # A user-supplied tempo WITHOUT a downbeat: trust their period, measure
-    # the phase from the played notes themselves (circular median of onset
-    # positions modulo the beat). The tracker can phase-lock off the grid
-    # even with a strong tempo prior — measured on the blues fixture at
-    # bpm=92/no-downbeat: 27 of 27 score onsets landed half a cell off the
-    # audio and coverage read 0.407 (verdict low) on a correct transcription.
+    # the phase from the played notes themselves. The tracker can phase-lock
+    # off the grid even with a strong tempo prior — measured on the blues
+    # fixture at bpm=92/no-downbeat: 27 of 27 score onsets landed half a cell
+    # off the audio and coverage read 0.407 (verdict low) on a correct
+    # transcription. The estimator must be SUBDIVISION-AWARE: a circular mean
+    # of onset positions is degenerate for straight eighths (positions {0, ½}
+    # are antipodal) and biased for swing (mass at ⅔ drags the mean off the
+    # beat) — an earlier circular-mean version produced a spurious pickup bar
+    # and tie-split drift for exactly that reason. Minimizing each onset's
+    # distance to its NEAREST legal grid position is phase estimation with
+    # the same model the quantizer uses.
     if (bpm is not None and bpm > 0 and downbeat is None
             and onsets is not None and len(onsets) >= 4):
         period = 60.0 / float(bpm)
-        angles = np.array([2 * np.pi * (t % period) / period for t in onsets])
-        phase = (np.arctan2(np.sin(angles).mean(), np.cos(angles).mean())
-                 / (2 * np.pi)) * period % period
-        downbeat = float(min(onsets, key=lambda t: abs((t - phase) % period)
-                             if abs((t - phase) % period) < period / 2
-                             else period - (t - phase) % period))
-        # fall through to the metronomic path below with the measured phase
-        downbeat = phase + round((downbeat - phase) / period) * period
+        ons = np.asarray(sorted(onsets))
+        subdivs = np.array([0.0, 0.25, 1 / 3, 0.5, 2 / 3, 0.75, 1.0])
+        cands = np.arange(0.0, period, 0.002)
+        fr = ((ons[None, :] - cands[:, None]) / period) % 1.0
+        d = np.abs(fr[:, :, None] - subdivs[None, None, :]).min(axis=2)
+        phase = float(cands[int(np.argmin(d.sum(axis=1)))])
+        # Bar 1 starts with the music: the beat at-or-just-before the first
+        # onset is the downbeat (an onset within 30% of a beat after it
+        # counts as ON it, so no artificial pickup bar appears).
+        first = float(ons[0])
+        downbeat = phase + np.floor((first - phase) / period + 0.30) * period
+        if downbeat < -period * 0.25:
+            downbeat += period
 
     if bpm is not None and bpm > 0 and downbeat is not None:
         period = 60.0 / float(bpm)

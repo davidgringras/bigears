@@ -1,4 +1,4 @@
-# SoloScribe on Streamlit Community Cloud — Linux, CPU only, Python 3.10.
+# Big Ears on Streamlit Community Cloud — Linux, CPU only, Python 3.10.
 #
 # This is space/requirements.txt minus everything the free tier cannot carry,
 # plus streamlit. Guitar isolation (torch + demucs, ~500 MB and minutes of

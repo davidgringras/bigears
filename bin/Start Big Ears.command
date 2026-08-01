@@ -1,8 +1,8 @@
 #!/bin/zsh
-# Double-click this in Finder to run SoloScribe.
+# Double-click this in Finder to run Big Ears.
 #
 # Starts the local web server and opens it in your browser. Keep the Terminal
-# window open while you are using it; closing the window stops SoloScribe.
+# window open while you are using it; closing the window stops Big Ears.
 
 set -u
 
@@ -11,7 +11,7 @@ PORT=8746
 URL="http://127.0.0.1:${PORT}"
 PY="$REPO/.venv/bin/python"
 
-[[ -t 1 ]] && printf '\033]0;SoloScribe\007'   # name the Terminal window
+[[ -t 1 ]] && printf '\033]0;Big Ears\007'   # name the Terminal window
 
 cd "$REPO" || exit 1
 
@@ -23,7 +23,7 @@ stop_here() {
 }
 
 if [[ ! -x "$PY" ]]; then
-  print "SoloScribe has not been set up on this Mac yet."
+  print "Big Ears has not been set up on this Mac yet."
   print ""
   print "Open Terminal and run this line:"
   print ""
@@ -33,7 +33,7 @@ fi
 
 # Already running from an earlier double-click? Just bring it up.
 if curl -fsS --max-time 2 "$URL/api/health" > /dev/null 2>&1; then
-  print "SoloScribe is already running. Opening it now."
+  print "Big Ears is already running. Opening it now."
   open "$URL"
   exit 0
 fi
@@ -41,7 +41,7 @@ fi
 # Check the app loads before handing the window over to the server, so a broken
 # install says so in plain words instead of flashing a traceback.
 if ! "$PY" -c "import soloscribe.webapp.server" > /tmp/soloscribe-start.log 2>&1; then
-  print "SoloScribe could not start. Some of its parts are missing or broken."
+  print "Big Ears could not start. Some of its parts are missing or broken."
   print ""
   print "Open Terminal and run this line to repair it:"
   print ""
@@ -53,10 +53,10 @@ if ! "$PY" -c "import soloscribe.webapp.server" > /tmp/soloscribe-start.log 2>&1
   stop_here
 fi
 
-print "Starting SoloScribe."
+print "Starting Big Ears."
 print "Your browser will open in a moment."
 print ""
-print "Leave this window open while you use it. Close it to stop SoloScribe."
+print "Leave this window open while you use it. Close it to stop Big Ears."
 print ""
 
 # Wait for the server to answer, then open the browser. Runs alongside the

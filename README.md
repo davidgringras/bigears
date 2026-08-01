@@ -17,7 +17,7 @@ itself and says so.
 
 ```bash
 bin/install.sh                      # one-time setup
-open "bin/Start SoloScribe.command" # opens the app in your browser
+open "bin/Start Big Ears.command" # opens the app in your browser
 ```
 
 Or from the command line:

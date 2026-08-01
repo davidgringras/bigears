@@ -1,4 +1,4 @@
-"""SoloScribe on Streamlit Community Cloud.
+"""Big Ears on Streamlit Community Cloud.
 
 The free web tier of the transcription app: upload a solo, get back a Guitar
 Pro file and the honest audit report. Guitar isolation is OFF here — the
@@ -103,13 +103,13 @@ def _opt(x) -> float | None:
         return None
 
 
-st.set_page_config(page_title="SoloScribe", page_icon="🎸", layout="centered")
+st.set_page_config(page_title="Big Ears", page_icon="🎸", layout="centered")
 
 if "backend_note" not in st.session_state:
     st.session_state.backend_note = pin_transcription_backend()
     print(st.session_state.backend_note, flush=True)
 
-st.title("SoloScribe")
+st.title("Big Ears")
 st.markdown(
     "Give me a recording of a guitar solo and I will write it out for you: a "
     "**Guitar Pro file** you can slow down, loop and read, and an honest "

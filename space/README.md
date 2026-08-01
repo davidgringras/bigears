@@ -1,5 +1,5 @@
 ---
-title: SoloScribe
+title: Big Ears
 colorFrom: gray
 colorTo: indigo
 sdk: gradio
@@ -10,7 +10,7 @@ license: other
 short_description: Audio in, Guitar Pro out, with an honest report on itself.
 ---
 
-# SoloScribe
+# Big Ears
 
 Give it a recording of a guitar solo and it writes the solo out: a Guitar Pro
 `.gp5` file with notation, tab and playable fingerings, plus a report in which
@@ -103,7 +103,7 @@ Git works too, if you prefer to see what you are sending:
 ```bash
 git clone https://huggingface.co/spaces/<your-username>/soloscribe
 cp -R space/. soloscribe/
-cd soloscribe && git add -A && git commit -m "SoloScribe" && git push
+cd soloscribe && git add -A && git commit -m "Big Ears" && git push
 ```
 
 Over HTTPS, git asks for your username and then a **write token** as the
