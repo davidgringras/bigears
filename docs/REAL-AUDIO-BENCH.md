@@ -113,16 +113,34 @@ running.** A first full pass over the ten solos completed at ~01:14; at 01:19
 different program. §7 reports the measured size of the shift, because it is
 worth knowing.
 
-All numbers in §3–§6 were re-derived in a single pass against:
+All numbers in §3–§6 were re-derived in a single pass against these file
+hashes, which are what actually pin the measurement:
 
-    HEAD effc5a7671acdafc31a7cdd7bcd2ff50b52fe510
     transcribe.py b0304a002e41af70a495c980859e4ee64f15b75504409716d6edc8cac996428d
     model.py      2e7d44d7c8435bd5efa18e9c9f1eff15b5c4fbddbda0697fc4ab768654da3188
     pipeline.py   d71002c15cd2e841e2c559c08f73ac7679d9faf94cb7426245ca710d621e81bd
     audit.py      3f64946fb3d99b009b0297780b898622dadbcf0ab56707a710a4f6af63602078
+    synth.py      69e9cccf51a93855ad07bbe901f604cd4701b050b5ba1aa9e176a4df7a78f96c
+
+That was `HEAD` = `effc5a7` at the time of the run. `HEAD` has since advanced
+to `0eda1f7`, which touched only `synth.py` (to the hash above, already
+re-verified) and added a `space/soloscribe/` deployment copy — **all five
+hashes above are unchanged at `0eda1f7`**, so these numbers describe the
+current transcription path, not a superseded one. Verify by hash, not by
+commit: in a repository this actively edited, `HEAD` moves for reasons
+unrelated to what is being measured.
 
 Those four hashes were captured before the re-run and re-verified unchanged
-after it. `transcribe` was separately confirmed reproducible at this revision:
+after it.
+
+`soloscribe/synth.py` — which `audit.py` imports for its resynthesis — was
+edited again by the concurrent session *after* the §6 pipeline runs completed.
+Those runs were therefore repeated against the newer `synth.py`
+(`69e9cccf…`) and every reported field came back **identical**: same verdict,
+same `f1_100ms`, same onset coverage, same true F1, on all three runs. The §6
+findings are not an artefact of a stale resynthesis module.
+
+`transcribe` was separately confirmed reproducible at this revision:
 two complete passes over the ten solos were **bit-identical in every note count
 and every F1**, three repeats within one process agreed, six repeats in
 separate processes agreed, and results were unchanged under 12× concurrent CPU
@@ -492,6 +510,10 @@ The shape of the degradation is more useful than its size:
     output/guitarset/diagnose.py             error-structure classification
     output/guitarset/results_*.json          all raw numbers
     output/guitarset/results_solo_RUN1.json  pre-effc5a7 pass, kept for §7
+    output/guitarset/*_STALE.json            pre-effc5a7 comp/mix/pipeline runs,
+                                             superseded; retained as evidence only
+    output/guitarset/*_PRESYNTH.json         §6 runs before the later synth.py edit,
+                                             verified field-identical to current
 
 Re-running requires the two Zenodo zips in `output/guitarset/`; nothing under
 `soloscribe/` was modified to produce any number in this document.

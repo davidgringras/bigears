@@ -47,6 +47,22 @@ the pad alone.
 Quantization in isolation (ground-truth events, perfect grid): 126/126 onsets
 exact across all three licks, including triplet figures inside swing context.
 
+## Real audio (GuitarSet)
+
+The first contact with real recordings — GuitarSet v1.1.0, real close-mic'd
+acoustic guitar with note-level ground truth — is written up in full in
+[REAL-AUDIO-BENCH.md](REAL-AUDIO-BENCH.md). Headlines, cold start (no key or
+tempo hints): **median F1@100ms 0.850 on solo material** (rock 0.887, bossa
+0.884, jazz 0.860, funk 0.792, strummy singer-songwriter 0.660 — the last is
+not single-note material); chordal comping 0.47 (dense strums exceed the
+transcriber's simultaneity capacity: precision 0.85, recall 0.20 on the worst
+case); constructed two-guitar mixes fail by PRECISION — the pipeline
+faithfully transcribes both guitars and cannot know which one was wanted, and
+instrument-class separation cannot split guitar from guitar. The audit now
+carries a standing caveat saying exactly that. Real-world advice these
+numbers support: clips where the solo carries the register do well; a second
+guitar in the same range is the honest frontier.
+
 ## What the self-audit is, and is not
 
 Each run's report scores agreement between the written score and what the
