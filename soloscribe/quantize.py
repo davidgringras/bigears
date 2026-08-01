@@ -27,6 +27,7 @@ def build_beat_grid(
     downbeat: float | None = None,
     beats_per_bar: int = 4,
     cover_until: float | None = None,
+    onsets: list[float] | None = None,
 ) -> BeatGrid:
     """Track beats in the audio; extrapolate so the grid covers the whole clip."""
     import librosa
@@ -37,6 +38,24 @@ def build_beat_grid(
     # truth — honor it with an exact metronomic grid. Tracking would only
     # re-introduce phase errors (a syncopated line pulls the tracker toward
     # the offbeats; comb-energy correction is circular for the same reason).
+    # A user-supplied tempo WITHOUT a downbeat: trust their period, measure
+    # the phase from the played notes themselves (circular median of onset
+    # positions modulo the beat). The tracker can phase-lock off the grid
+    # even with a strong tempo prior — measured on the blues fixture at
+    # bpm=92/no-downbeat: 27 of 27 score onsets landed half a cell off the
+    # audio and coverage read 0.407 (verdict low) on a correct transcription.
+    if (bpm is not None and bpm > 0 and downbeat is None
+            and onsets is not None and len(onsets) >= 4):
+        period = 60.0 / float(bpm)
+        angles = np.array([2 * np.pi * (t % period) / period for t in onsets])
+        phase = (np.arctan2(np.sin(angles).mean(), np.cos(angles).mean())
+                 / (2 * np.pi)) * period % period
+        downbeat = float(min(onsets, key=lambda t: abs((t - phase) % period)
+                             if abs((t - phase) % period) < period / 2
+                             else period - (t - phase) % period))
+        # fall through to the metronomic path below with the measured phase
+        downbeat = phase + round((downbeat - phase) / period) * period
+
     if bpm is not None and bpm > 0 and downbeat is not None:
         period = 60.0 / float(bpm)
         horizon = max(duration, cover_until or 0.0)

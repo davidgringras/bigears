@@ -37,7 +37,7 @@ PINNED_FIELDS = {
 PINNED_SIGNATURES = {
     transcribe: ["audio_path", "mode", "min_pitch", "max_pitch", "stats"],
     quantize: ["events", "grid", "swing", "key", "chords", "title", "min_cell"],
-    build_beat_grid: ["y", "sr", "bpm", "downbeat", "beats_per_bar", "cover_until"],
+    build_beat_grid: ["y", "sr", "bpm", "downbeat", "beats_per_bar", "cover_until", "onsets"],
     assign_fretting: ["qnotes", "tuning", "capo", "max_fret"],
     write_gp5: ["score", "path"],
     audit: ["score", "events", "original_path", "stem_path", "out_dir", "caveats"],

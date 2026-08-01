@@ -172,6 +172,21 @@ def run_pipeline(
             "doubling (Wes Montgomery-style), the doubling will have been "
             "written as a single line; re-run with 'Chords too' to keep it"
         )
+    # Also undetectable, measured on real two-guitar mixes (the transcription
+    # was faithful to BOTH instruments; no metric can tell whose notes they
+    # are without knowing which part the listener wanted):
+    if stem_path is not None:
+        warnings.append(
+            "the band was isolated away first — but a second guitar or other "
+            "instrument in the same register would have stayed with the solo, "
+            "and its notes would be written down too"
+        )
+    else:
+        warnings.append(
+            "everything pitched in the clip gets written down — if another "
+            "instrument shares it, its notes are in the tab too, and the "
+            "checks below cannot tell whose notes are whose"
+        )
 
     _report(progress, "Checking my work against your recording", 0.82)
     report_path: str | None = None
