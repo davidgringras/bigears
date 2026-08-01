@@ -86,8 +86,8 @@ KEY_VALUES = dict(KEYS)
 FEEL_CHOICES = ["Let me work it out", "Swing", "Straight"]
 FEEL_VALUES = {"Let me work it out": "auto", "Swing": "on", "Straight": "off"}
 
-MODE_CHOICES = ["A single-note solo", "Chords as well"]
-MODE_VALUES = {"A single-note solo": "solo", "Chords as well": "poly"}
+MODE_CHOICES = ["A single-note solo", "Chords as well (experimental — single notes are far more accurate)"]
+MODE_VALUES = {"A single-note solo": "solo", "Chords as well (experimental — single notes are far more accurate)": "poly"}
 
 BEATS_CHOICES = ["4/4 — four in a bar", "3/4 — waltz time", "6/8 — counted as six"]
 BEATS_VALUES = {BEATS_CHOICES[0]: 4, BEATS_CHOICES[1]: 3, BEATS_CHOICES[2]: 6}
@@ -262,8 +262,15 @@ def _minutes(seconds: float) -> str:
     return f"{s} second{'s' if s != 1 else ''}"
 
 
-def _number(value, label: str, *, minimum: float | None = None) -> float | None:
-    """A Gradio number box, which hands back None, '', a float or a string."""
+def _number(value, label: str, *, minimum: float | None = None,
+            zero_means_blank: bool = False) -> float | None:
+    """A Gradio number box, which hands back None, '', a float or a string.
+
+    ``zero_means_blank``: deployed Gradio number widgets were observed to hand
+    back 0 for fields the user never touched (the first real user hit this —
+    a phantom tempo of 0 refused the run). For fields where zero carries no
+    meaning (a tempo, an end time), 0 is read as "left blank".
+    """
     if value is None:
         return None
     text = str(value).strip().replace(",", ".")
@@ -279,6 +286,8 @@ def _number(value, label: str, *, minimum: float | None = None) -> float | None:
         raise ValueError(
             f"I could not read {label} as a number. Leave it blank if you are not sure."
         )
+    if zero_means_blank and number == 0:
+        return None
     if minimum is not None and number < minimum:
         raise ValueError(f"{label.capitalize()} cannot be less than {minimum:g}.")
     return number
@@ -402,16 +411,16 @@ def transcribe_solo(
 
     if not audio_path:
         return None, None, _note(
-            "Choose a recording first — an MP3, WAV, M4A, AIFF or FLAC of the "
+            "Choose a recording first — an MP3, WAV, M4A, AIFF, FLAC, or an MP4/MOV video of the "
             "solo you want written out.",
             heading="Nothing to listen to yet",
         )
 
     try:
-        bpm = _number(tempo, "the tempo", minimum=20.0)
-        downbeat_s = _number(downbeat, "where bar one begins", minimum=0.0)
-        start_s = _number(start, "the start time", minimum=0.0)
-        end_s = _number(end, "the end time", minimum=0.0)
+        bpm = _number(tempo, "the tempo", minimum=20.0, zero_means_blank=True)
+        downbeat_s = _number(downbeat, "where bar one begins", minimum=0.0, zero_means_blank=True)
+        start_s = _number(start, "the start time", zero_means_blank=True, minimum=0.0)
+        end_s = _number(end, "the end time", minimum=0.0, zero_means_blank=True)
         capo_fret = _number(capo, "the capo fret", minimum=0.0)
     except ValueError as exc:
         return None, None, _note(str(exc), heading="I could not read one of the boxes")
@@ -525,9 +534,11 @@ def build_ui() -> gr.Blocks:
 
         with gr.Row():
             with gr.Column(scale=3):
-                audio = gr.Audio(
-                    label="Your recording",
-                    sources=["upload"],
+                audio = gr.File(
+                    label="Your recording — MP3, WAV, M4A, AIFF, FLAC, or a "
+                          "video (MP4/MOV); I use the sound track",
+                    file_types=[".mp3", ".wav", ".m4a", ".aiff", ".aif",
+                                ".flac", ".mp4", ".mov", ".aac", ".ogg"],
                     type="filepath",
                 )
                 gr.Markdown(
@@ -539,8 +550,9 @@ def build_ui() -> gr.Blocks:
                         KEY_CHOICES, value=KEY_CHOICES[0], label="Key",
                         info="Sets how the sharps and flats get spelled.",
                     )
-                    tempo = gr.Number(
-                        label="Tempo, in beats per minute", value=None,
+                    tempo = gr.Textbox(
+                        label="Tempo, in beats per minute", value="",
+                        placeholder="Leave blank",
                         info="Leave blank and I will work it out from your playing.",
                     )
                 feel = gr.Radio(
@@ -583,20 +595,23 @@ def build_ui() -> gr.Blocks:
                         info="Nearly everything is 4/4.",
                     )
                     with gr.Row():
-                        downbeat = gr.Number(
-                            label="Where bar one begins, in seconds", value=None,
+                        downbeat = gr.Textbox(
+                            label="Where bar one begins, in seconds", value="",
+                            placeholder="Leave blank",
                             info="The moment you would count “one”. Useful after a count-in.",
                         )
-                        capo = gr.Number(
-                            label="Capo, in frets", value=None,
+                        capo = gr.Textbox(
+                            label="Capo, in frets", value="", placeholder="Leave blank",
                             info="If you played with a capo, the tab comes out relative to it.",
                         )
                     with gr.Row():
-                        start = gr.Number(
-                            label="Use only from, in seconds", value=None,
+                        start = gr.Textbox(
+                            label="Use only from, in seconds", value="",
+                            placeholder="Leave blank",
                             info="Leave both blank to transcribe the whole thing.",
                         )
-                        end = gr.Number(label="Use only up to, in seconds", value=None)
+                        end = gr.Textbox(label="Use only up to, in seconds",
+                                         value="", placeholder="Leave blank")
 
                 go = gr.Button("Transcribe this solo", variant="primary")
 

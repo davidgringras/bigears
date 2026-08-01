@@ -122,8 +122,8 @@ st.markdown(
 
 with st.form("job"):
     clip = st.file_uploader(
-        "Your recording — MP3, WAV, M4A, AIFF or FLAC, up to 3 minutes",
-        type=["mp3", "wav", "m4a", "aiff", "aif", "flac"],
+        "Your recording — MP3, WAV, M4A, AIFF, FLAC, or a video (MP4/MOV), up to 3 minutes",
+        type=["mp3", "wav", "m4a", "aiff", "aif", "flac", "mp4", "mov", "aac", "ogg"],
     )
     c1, c2 = st.columns(2)
     with c1:
@@ -155,7 +155,7 @@ with st.form("job"):
 
 if go:
     if clip is None:
-        st.warning("Choose a recording first — MP3, WAV, M4A, AIFF or FLAC.")
+        st.warning("Choose a recording first — MP3, WAV, M4A, AIFF, FLAC or an MP4/MOV video.")
         st.stop()
     workdir = tempfile.mkdtemp(prefix="soloscribe_")
     src = os.path.join(workdir, clip.name)

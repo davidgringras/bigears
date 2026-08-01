@@ -176,7 +176,7 @@ def test_the_options_reach_the_pipeline(audio, calls):
         key_label="B♭ major",
         tempo="152",
         feel_label="Swing",
-        mode_label="Chords as well",
+        mode_label=app.MODE_CHOICES[1],
         chords="Fmaj7\nGm7 | C7",
         beats_label=app.BEATS_CHOICES[1],
         downbeat="1.25",

@@ -276,7 +276,10 @@ def test_an_oversized_recording_is_refused_before_any_work_starts(client, monkey
         assert not server._JOBS
 
 
-@pytest.mark.parametrize("filename", ["riff.txt", "riff.mp4", "riff"])
+# .mp4 moved to the SUPPORTED list (iPhone videos; ffmpeg extracts the
+# audio) — garbage bytes inside a supported container now fail at decode
+# with the friendly message instead of at the extension gate.
+@pytest.mark.parametrize("filename", ["riff.txt", "riff.docx", "riff"])
 def test_non_audio_uploads_are_refused(client, filename):
     response = _post(client, filename=filename, content=b"not audio at all")
     assert 400 <= response.status_code < 500

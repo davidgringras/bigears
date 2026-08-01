@@ -52,7 +52,7 @@ to use the Mac's graphics cores, and the recording never leaves the machine.
 Double-click **Start Big Ears** (in the `bin` folder). Your browser opens
 the app. Then:
 
-1. **Drop your recording in.** MP3, WAV, M4A — whatever you have. A clip
+1. **Drop your recording in.** MP3, WAV, M4A — even a video (MP4/MOV); the sound track is used. Whatever you have. A clip
    trimmed to just the solo works better than a whole track (there are
    start/end boxes under "If you know a little more" if you'd rather not
    trim it yourself).

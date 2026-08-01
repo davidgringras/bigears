@@ -50,7 +50,7 @@ MAX_UPLOAD_BYTES = 200 * 1024 * 1024
 # exact one happens against UploadFile.size.
 _MULTIPART_SLACK = 1024 * 1024
 
-AUDIO_SUFFIXES = (".mp3", ".wav", ".m4a", ".aiff", ".aif", ".flac")
+AUDIO_SUFFIXES = (".mp3", ".wav", ".m4a", ".aiff", ".aif", ".flac", ".mp4", ".mov", ".aac", ".ogg")
 SWING_CHOICES = ("auto", "on", "off")
 SEPARATE_CHOICES = ("auto", "on", "off")
 MODE_CHOICES = ("solo", "poly")
