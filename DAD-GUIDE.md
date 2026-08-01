@@ -15,6 +15,14 @@ is selling something. The difference here is that this one measures how much
 it got right and shows you, so your cleanup time goes exactly where it's
 needed.
 
+## The no-install way
+
+There is a web version at https://huggingface.co/spaces/DGring/soloscribe —
+upload the clip, get the Guitar Pro file and report back. It does everything,
+just slower than a Mac of your own (and if it has been asleep, the first
+visit takes a minute to wake). For regular use, the Mac version below is the
+quick one.
+
 ## Installing it (once, about fifteen minutes)
 
 You need a Mac with an Apple chip (any from about 2021 on — About This Mac

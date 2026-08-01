@@ -146,7 +146,7 @@ def run_pipeline(
     _report(progress, "Finding the beat", 0.64)
     grid = build_beat_grid(
         y, sr, bpm=bpm, downbeat=downbeat, beats_per_bar=beats_per_bar,
-        cover_until=duration,
+        cover_until=duration, onsets=[e.start for e in events],
     )
     _report(progress, "Finding the beat", 0.70)
 
