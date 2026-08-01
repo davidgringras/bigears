@@ -451,6 +451,125 @@ def _refine_solo(
     return kept
 
 
+# --- re-articulation splitting -------------------------------------------
+# Repeated same-pitch fast notes reach basic-pitch's note DECODER as one
+# contiguous activation (observed gap 0.000 s), so they emerge fused — the
+# residual recall class every earlier fix bounced off. But the model's own
+# ONSET head sees every re-attack; the decoder just ignores it while frame
+# activation stays high. Measured posteriors at the note's pitch bin (±1):
+#   true re-articulations (8 fused sites, sampled-guitar AND KS timbre):
+#     0.851–0.973
+#   amplitude-dip artifact that must NOT split (94% mid-note dip): 0.703
+#   held-note interiors (2 controls, 2 timbres): 0.115–0.162
+# 0.80 separates every measured class with margin on both sides. A missed
+# split is the status quo ante (bounded-safe); a false split would fabricate
+# a repeat, which is why the threshold sits above the dip, not midway.
+# Pitch-bin-local, so safe in poly mode: another voice's onset lives in
+# another bin.
+#
+# SECOND, independent gate — audio energy must RISE through the claimed
+# re-attack. The posterior alone shipped two audible false splits (attack
+# smear 62 ms into a held note; a mid-decay sample artifact), both measured
+# at env-rise ratio 0.90 (RMS 5–35 ms after ÷ RMS 5–35 ms before), while
+# seven known true re-picks on the same recording measured 1.07–1.22 and a
+# re-pick after near-silence measured >>1. Ratio 1.00 is the physical
+# boundary: a re-articulation injects energy; decay cannot. Both gates must
+# agree before a split happens.
+SPLIT_ONSET_POSTERIOR = 0.80
+SPLIT_ENV_RISE = 1.00
+SPLIT_ENV_PRE = (0.035, 0.005)   # s before candidate: RMS window
+SPLIT_ENV_POST = (0.005, 0.035)  # s after candidate
+SPLIT_MIN_PIECE = 0.06           # s; also the spacing floor between split points
+SPLIT_EDGE_START = 0.05          # s into the note before a split may occur
+SPLIT_EDGE_END = 0.04            # s before the note's end
+_BP_FRAME = 256 / 22050.0        # constants.py: AUDIO_SAMPLE_RATE 22050, FFT_HOP 256
+_BP_MIDI_OFFSET = 21             # onset matrix bin 0 = MIDI 21
+
+
+def _load_mono(audio_path: str) -> tuple[np.ndarray, int]:
+    y, sr = librosa.load(audio_path, sr=None, mono=True)
+    return y.astype(float), int(sr)
+
+
+def _split_rearticulations(
+    events: list[NoteEvent], model_output, y=None, sr: int = PYIN_SR
+) -> list[NoteEvent]:
+    """Split fused repeated notes at the model's own interior onset peaks."""
+    try:
+        onset = np.asarray(model_output["onset"])
+    except Exception:
+        return events
+
+    def energy_rises(t: float) -> bool:
+        if y is None:
+            return True  # no audio handed in: posterior-only (tested paths pass it)
+        pre = y[int((t - SPLIT_ENV_PRE[0]) * sr):int((t - SPLIT_ENV_PRE[1]) * sr)]
+        post = y[int((t + SPLIT_ENV_POST[0]) * sr):int((t + SPLIT_ENV_POST[1]) * sr)]
+        if len(pre) < 8 or len(post) < 8:
+            return False
+        rp = float(np.sqrt((pre ** 2).mean()))
+        rq = float(np.sqrt((post ** 2).mean()))
+        return rq >= SPLIT_ENV_RISE * max(rp, 1e-9)
+    if onset.ndim == 3:
+        onset = onset[0]
+    note_act = None
+    try:
+        note_act = np.asarray(model_output["note"])
+        if note_act.ndim == 3:
+            note_act = note_act[0]
+    except Exception:
+        pass
+
+    out: list[NoteEvent] = []
+    for ev in events:
+        b = ev.pitch - _BP_MIDI_OFFSET
+        if not (0 <= b < onset.shape[1]) or ev.duration < 2 * SPLIT_MIN_PIECE:
+            out.append(ev)
+            continue
+        f0 = int(round((ev.start + SPLIT_EDGE_START) / _BP_FRAME))
+        f1 = int(round((ev.end - SPLIT_EDGE_END) / _BP_FRAME))
+        if f1 - f0 < 2:
+            out.append(ev)
+            continue
+        lane = onset[f0:f1, max(0, b - 1):b + 2].max(axis=1)
+        cuts: list[float] = []
+        for i in range(1, len(lane) - 1):
+            if (
+                lane[i] >= SPLIT_ONSET_POSTERIOR
+                and lane[i] >= lane[i - 1]
+                and lane[i] >= lane[i + 1]
+            ):
+                t = (f0 + i) * _BP_FRAME
+                if (
+                    t - ev.start >= SPLIT_MIN_PIECE
+                    and ev.end - t >= SPLIT_MIN_PIECE
+                    and (not cuts or t - cuts[-1] >= SPLIT_MIN_PIECE)
+                    and energy_rises(t)
+                ):
+                    cuts.append(t)
+        if not cuts:
+            out.append(ev)
+            continue
+        bounds = [ev.start] + cuts + [ev.end]
+        for j in range(len(bounds) - 1):
+            piece = NoteEvent(
+                start=bounds[j],
+                end=bounds[j + 1],
+                pitch=ev.pitch,
+                velocity=ev.velocity,
+                confidence=ev.confidence,
+                bend=list(ev.bend) if j == 0 else [],
+                vibrato=ev.vibrato if j == 0 else False,
+            )
+            if note_act is not None and 0 <= b < note_act.shape[1]:
+                pf0 = int(round(bounds[j] / _BP_FRAME))
+                pf1 = max(pf0 + 1, int(round(bounds[j + 1] / _BP_FRAME)))
+                amp = float(note_act[pf0:pf1, b].mean())
+                piece.velocity = _amp_to_velocity(amp)
+            out.append(piece)
+    return out
+
+
 def transcribe(
     audio_path: str,
     mode: str = "solo",
@@ -501,4 +620,8 @@ def transcribe(
         # alternative is emitting it at a pitch the contour contradicts.
         events = [e for e in events if min_pitch <= e.pitch <= max_pitch]
         events = merge_adjacent_events(events)
+    # LAST, after every merge pass (splits create 0-gap neighbours the
+    # unconditional <=15ms merge would immediately re-fuse):
+    _y, _sr = _load_mono(audio_path)
+    events = _split_rearticulations(events, _model_output, y=_y, sr=_sr)
     return sorted(events, key=lambda e: (e.start, e.pitch))

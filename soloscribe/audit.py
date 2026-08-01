@@ -37,7 +37,8 @@ Metrics dict shape (integration depends on these exact names):
     "verdict":      {"level": "high"|"medium"|"low", "reasons": [str, ...]},
     "caveats":      [str, ...],
     "comparison_source": "stem"|"original",
-    "render_path": str, "piano_roll_path": str, "report_path": str,
+    "render_path": str, "voiced_render_path": str|None,
+    "piano_roll_path": str, "report_path": str,
     "durations": {"comparison_sec", "render_sec"},
   }
 """
@@ -66,7 +67,12 @@ from matplotlib.patches import Rectangle
 from scipy.spatial.distance import cdist
 
 from .model import NoteEvent, Score
-from .synth import DEFAULT_SR, render_score, score_note_seconds
+from .synth import (
+    DEFAULT_SR,
+    render_events_fluid,
+    render_score,
+    score_note_seconds,
+)
 
 SR = DEFAULT_SR
 HOP = 512
@@ -905,6 +911,12 @@ def audit(
 
     y_cmp, _ = librosa.load(comparison_path, sr=SR, mono=True)
     y_ren = render_score(score, sr=SR, use_tempo_map=True)
+    # A second render, for ears only. Every metric below is computed from
+    # y_ren; this one plays the raw events through a sampled guitar because a
+    # guitarist listening to the plucked-string render could not tell whether
+    # the machine had heard the take. It returns None when fluidsynth or a
+    # soundfont is missing, and the report falls back to y_ren.
+    y_voiced = render_events_fluid(events, y_cmp, sr=SR)
 
     note_secs = score_note_seconds(score, use_tempo_map=True)
     score_onsets = np.array([t0 for _, t0, _ in note_secs], dtype=float)
@@ -941,6 +953,16 @@ def audit(
             "No raw transcription events were supplied, so the note-agreement "
             "and bar-by-bar timing figures are empty rather than zero."
         )
+    if y_voiced is not None:
+        all_caveats.append(
+            "The resynthesis you can play above is voiced with a sampled "
+            "guitar and plays the notes at the times the transcriber heard "
+            "them, before they were written onto the grid. Every number in "
+            "this report is measured from a plucked-string render of the "
+            "quantized score instead, so that player cannot tell you what "
+            "quantization changed — the piano roll and the bar-by-bar table "
+            "can."
+        )
     hop_used = chroma.get("hop_length", HOP)
     if hop_used != HOP:
         all_caveats.append(
@@ -960,6 +982,10 @@ def audit(
 
     render_path = os.path.join(out_dir, "render.wav")
     sf.write(render_path, y_ren, SR, subtype="PCM_16")
+    voiced_path: str | None = None
+    if y_voiced is not None and y_voiced.size:
+        voiced_path = os.path.join(out_dir, "render_voiced.wav")
+        sf.write(voiced_path, y_voiced, SR, subtype="PCM_16")
     roll_path = os.path.join(out_dir, "piano_roll.png")
     _piano_roll(score, events, note_secs, roll_path, max(dur_cmp, dur_ren))
     report_path = os.path.join(out_dir, "report.html")
@@ -973,6 +999,9 @@ def audit(
         "caveats": all_caveats,
         "comparison_source": comparison_source,
         "render_path": render_path,
+        # The listening render, or None where fluidsynth/a soundfont was
+        # missing. render_path is always the one the metrics were computed on.
+        "voiced_render_path": voiced_path,
         "piano_roll_path": roll_path,
         "report_path": report_path,
         "durations": {"comparison_sec": dur_cmp, "render_sec": dur_ren},
@@ -980,16 +1009,33 @@ def audit(
 
     with tempfile.TemporaryDirectory() as work:
         audio: list[tuple[str, str, str, str]] = []
-        blocks = [
-            ("Original", "what you gave us", original_path, "original"),
-            ("Isolated guitar", "after source separation", stem_path, "stem"),
+        # Third player: the sampled-guitar voicing where it exists, the
+        # plucked string otherwise. The wording has to say which one is
+        # sounding AND what it is playing — they are different renders of
+        # different things, and a listener who thinks the sampled version is
+        # the tab will credit it with rhythm the tab may not have.
+        listen = (
             (
+                "Transcription, resynthesized",
+                "what the transcriber heard, voiced with a sampled guitar at "
+                "the times it was played — not the quantized tab, and not "
+                "what the numbers below measure",
+                voiced_path,
+                "voiced",
+            )
+            if voiced_path
+            else (
                 "Transcription, resynthesized",
                 "the tab played back as a plucked string, on the recording's "
                 "own clock",
                 render_path,
                 "render",
-            ),
+            )
+        )
+        blocks = [
+            ("Original", "what you gave us", original_path, "original"),
+            ("Isolated guitar", "after source separation", stem_path, "stem"),
+            listen,
         ]
         for label, note, path, tag in blocks:
             if not path or not os.path.exists(path):

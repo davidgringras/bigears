@@ -21,11 +21,23 @@ Note-level F1 against ground truth, onset tolerance 100 ms, pitch-matched
 | bebop_f | | chord pad | 0.966 | 0.983 | 0.974 | correct |
 | bebop_f | | pad + noise | 0.950 | 0.983 | 0.966 | correct |
 | blues_a | 4 bars, straight 8ths/16ths + qtr-triplet, 92 bpm | none | 1.000 | 0.964 | 0.982 | correct |
-| blues_a | | chord pad | 0.926 | 0.893 | 0.909 | correct |
-| blues_a | | pad + noise | 0.897 | 0.929 | 0.912 | correct |
-| funk_e | 4 bars, syncopated straight 16ths, 104 bpm | none | 0.974 | 0.950 | 0.962 | correct |
-| funk_e | | chord pad | 0.881 | 0.925 | 0.902 | correct |
-| funk_e | | pad + noise | 0.878 | 0.900 | 0.889 | correct |
+| blues_a | | chord pad | 0.929 | 0.929 | 0.929 | correct |
+| blues_a | | pad + noise | 0.900 | 0.964 | 0.931 | correct |
+| funk_e | 4 bars, syncopated straight 16ths, 104 bpm | none | 0.950 | 0.950 | 0.950 | correct |
+| funk_e | | chord pad | 0.860 | 0.925 | 0.892 | correct |
+| funk_e | | pad + noise | 0.860 | 0.925 | 0.892 | correct |
+
+A re-articulation splitter now recovers repeated fast notes that reach the
+transcriber as one fused activation (its residual recall class): it splits
+only where basic-pitch's own onset head fires ≥0.80 at the note's pitch bin
+AND audio energy rises through the claimed re-attack (measured: true re-picks
+1.07–1.22 energy ratio, false-split sites 0.90 — ratio 1.00 is the physical
+boundary; full measurement table in transcribe.py). On the sampled-guitar
+demo this cut missed notes from 3 to 2 of 58 with zero invented notes. On
+the Karplus-Strong rows above the effect is mixed within ±0.02 — that
+renderer's ring-down blurs the energy boundary — and per policy the
+thresholds will only be retuned against real-guitar evidence, not another
+synthetic curve.
 
 Swing detection called all nine cases correctly, including refusing to stamp
 "swing" on the straight funk line whose 0.75-position sixteenths would fool a
