@@ -15,6 +15,30 @@ is selling something. The difference here is that this one measures how much
 it got right and shows you, so your cleanup time goes exactly where it's
 needed.
 
+## Installing it (once, about fifteen minutes)
+
+You need a Mac with an Apple chip (any from about 2021 on — About This Mac
+says "Apple M1/M2/M3/M4") and ~3 GB free.
+
+1. Download the ZIP from
+   https://github.com/davidgringras/soloscribe/archive/refs/heads/main.zip
+   and double-click it — you get a folder called `soloscribe-main`. Put it
+   in your home folder.
+2. Open Terminal (⌘-space, type "Terminal", return) and paste, with a
+   return after each line:
+
+       cd ~/soloscribe-main
+       bash bin/install.sh
+
+   The installer tells you exactly what to do if anything is missing, and
+   the big download takes about ten minutes.
+3. When it says "Done", double-click **Start SoloScribe** in the `bin`
+   folder. From then on it is always two clicks away.
+
+Why bother, when there may one day be a web version? Speed and privacy: on
+your own Mac the notes come back in seconds, the guitar-isolation step gets
+to use the Mac's graphics cores, and the recording never leaves the machine.
+
 ## Using it
 
 Double-click **Start SoloScribe** (in the `bin` folder). Your browser opens
