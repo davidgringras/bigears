@@ -380,14 +380,61 @@
         Guitar Pro file, a PDF of the score, and the audit report.</p>
       </div>
       <div class="way reveal">
-        <h3>The do-it-yourself way</h3>
-        <p>It runs on a Mac (Apple Silicon). Clone
-        <a href="https://github.com/davidgringras/soloscribe" style="color:var(--brass-deep)">the repository</a>,
-        run <code>bin/install.sh</code> once, then double-click
-        <em>Start&nbsp;SoloScribe</em> — the app opens in your browser and
-        everything happens on your own machine. Nothing is uploaded anywhere.</p>
+        <h3>The do-it-yourself way &mdash; the fast one</h3>
+        <p>On your own Mac it does everything, at full speed, with nothing
+        uploaded anywhere. Installing takes about fifteen minutes, most of it
+        waiting &mdash; <a href="#install" style="color:var(--brass-deep)">step-by-step
+        instructions below</a>.</p>
       </div>
     </div>
+  </div>
+</section>
+
+<section class="dark" id="install">
+  <div class="wrap">
+    <div class="kicker reveal">On your own Mac</div>
+    <h2 class="reveal">Putting it on your Mac, step by step</h2>
+    <p class="reveal">You need a Mac with an Apple chip &mdash; any MacBook, iMac or
+    Mac&nbsp;mini from about 2021 onwards (it says "Apple M1/M2/M3/M4" under
+    the apple menu &rarr; About This Mac) &mdash; and around 3&nbsp;GB of free space.
+    It was built and tested on exactly this kind of machine; older Intel Macs
+    are untested. Nothing here can break anything: it all lives in one folder
+    you can drag to the bin.</p>
+    <ol class="steps">
+      <li class="reveal"><strong>Download it.</strong>
+        <a href="https://github.com/davidgringras/soloscribe/archive/refs/heads/main.zip" style="color:var(--brass-hi)">Click
+        here for the ZIP</a>, then double-click the downloaded file &mdash; you get a
+        folder called <code>soloscribe-main</code>. Drag it somewhere sensible,
+        like your home folder.</li>
+      <li class="reveal"><strong>Open Terminal</strong> (press
+        <code>&#8984;&nbsp;space</code>, type "Terminal", press return) and paste
+        these two lines, pressing return after each:<br>
+        <code>cd ~/soloscribe-main</code><br>
+        <code>bash bin/install.sh</code><br>
+        The installer checks what your Mac already has and <em>tells you
+        exactly what to do</em> if anything is missing &mdash; at most it asks you
+        to paste one more line and run it again. The big download takes ten
+        minutes or so; make the tea.</li>
+      <li class="reveal"><strong>Start it.</strong> When the installer says
+        "Done", double-click <em>Start&nbsp;SoloScribe</em> in the
+        <code>bin</code> folder (or paste the start line the installer prints).
+        The app opens in your browser, and from then on it is always two
+        clicks away.</li>
+    </ol>
+    <h2 class="reveal" style="margin-top:2.5rem">Why the Mac version is the quick one</h2>
+    <p class="reveal">Everything runs on your own machine, so there is no
+    uploading, no queue, and nothing to wake up. Measured on the Mac it was
+    built on: working out the notes takes about five seconds per half-minute
+    of audio, and a complete run on a short clip &mdash; notes, beat, fingerings,
+    the Guitar Pro file and the self-check report &mdash; comes back in well under
+    a minute. The guitar-isolation step (for clips where the band drowns the
+    guitar) uses the Mac's graphics cores, where a free web computer has none.
+    And since the recording never leaves the machine, it is as private as
+    humming to yourself.</p>
+    <p class="quiet reveal" style="color:var(--muted-d)">If anything refuses to
+    open with a message about an "unidentified developer", that is the Mac
+    being cautious about downloaded files &mdash; the installer clears it for you,
+    so run step 2 first and it will not come up.</p>
   </div>
 </section>
 

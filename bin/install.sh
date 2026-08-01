@@ -77,7 +77,15 @@ fi
 # 5. Finish -----------------------------------------------------------------
 
 chmod +x "$REPO_ROOT/bin/Start SoloScribe.command" 2> /dev/null
+# A ZIP downloaded in a browser arrives quarantined, and macOS then blocks
+# double-clicking the launcher. Running this installer was the user's own
+# deliberate act in Terminal, so clearing the flag on our own launcher here
+# is the honest fix — it makes double-click work from now on.
+xattr -d com.apple.quarantine "$REPO_ROOT/bin/Start SoloScribe.command" 2> /dev/null
 
 echo
 echo "Done."
-echo "Now double-click Start SoloScribe.command in the bin folder."
+echo "Now double-click Start SoloScribe.command in the bin folder,"
+echo "or start it right here with:"
+echo
+echo "  \"$REPO_ROOT/bin/Start SoloScribe.command\""
