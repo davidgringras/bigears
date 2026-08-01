@@ -22,6 +22,23 @@ from .model import BeatGrid, NoteEvent, QNote, Score, TICKS_PER_QUARTER
 _SUBDIVS = np.array([0.0, 0.25, 1 / 3, 0.5, 2 / 3, 0.75, 1.0])
 
 
+def _grid_fit_seconds(times: list[float], ons: np.ndarray) -> float:
+    """Mean seconds-distance from each onset to its nearest legal subdivision
+    of a (possibly drifting) beat grid."""
+    if len(times) < 2 or len(ons) == 0:
+        return float("inf")
+    ts = np.asarray(times)
+    total = 0.0
+    for t in ons:
+        i = int(np.clip(np.searchsorted(ts, t) - 1, 0, len(ts) - 2))
+        span = ts[i + 1] - ts[i]
+        if span <= 0:
+            return float("inf")
+        frac = (t - ts[i]) / span
+        total += float(np.abs(_SUBDIVS - frac).min()) * span
+    return total / len(ons)
+
+
 def _subdiv_fit(ons: np.ndarray, period: float) -> tuple[float, float]:
     """(mean distance to nearest legal subdivision, best phase) for a period."""
     cands = np.arange(0.0, period, 0.002)
@@ -154,6 +171,91 @@ def build_beat_grid(
     if bpm is not None and bpm > 0 and downbeat is not None:
         period = 60.0 / float(bpm)
         horizon = max(duration, cover_until or 0.0)
+
+        # Real players drift; a metronomic grid at even the RIGHT tempo pays
+        # for that in coverage (measured: real jazz at a correctly fitted
+        # 112 bpm still scored 0.574 against its own audio). So when onsets
+        # are available, also build a tracker-constrained-to-this-tempo grid
+        # and let the onsets arbitrate in seconds. The tracker must win by a
+        # clear margin: unconstrained preference for it is exactly the
+        # phase-lock failure the metronomic paths exist to prevent.
+        if onsets is not None and len(onsets) >= 8 and duration > 4.0:
+            try:
+                _, fr_tr = librosa.beat.beat_track(
+                    y=y, sr=sr, start_bpm=float(bpm), tightness=400, trim=False)
+                t_tr = [float(x) for x in librosa.frames_to_time(fr_tr, sr=sr)]
+                if len(t_tr) >= 4:
+                    p_tr = float(np.median(np.diff(t_tr)))
+                    while t_tr[0] - p_tr > -p_tr * 0.5:
+                        t_tr.insert(0, t_tr[0] - p_tr)
+                        if t_tr[0] <= 0:
+                            break
+                    while t_tr[-1] < horizon:
+                        t_tr.append(t_tr[-1] + p_tr)
+                    ons_a = np.asarray(sorted(onsets))
+                    # The tracker's beats live in the onset-DETECTOR's time
+                    # convention (~30 ms late of the transcriber's event
+                    # clock — the same measured gap the demo calibration
+                    # handles). The metronomic grid is phase-fitted to the
+                    # events; the tracked grid gets the same alignment:
+                    # keep its drift shape, slide the whole grid by the
+                    # constant that best fits the events.
+                    deltas = np.arange(-0.06, 0.0605, 0.004)
+                    best_d = min(deltas, key=lambda d: _grid_fit_seconds(
+                        [t + d for t in t_tr], ons_a))
+                    t_tr = [t + float(best_d) for t in t_tr]
+                    metro = []
+                    tm = float(downbeat)
+                    while tm - period >= -period * 0.5:
+                        tm -= period
+                    while tm < horizon + period:
+                        metro.append(tm)
+                        tm += period
+                    c_metro = _grid_fit_seconds(metro, ons_a)
+                    c_track = _grid_fit_seconds(t_tr, ons_a)
+
+                    def _onbeat_frac(times_):
+                        ts_ = np.asarray(times_)
+                        n = 0
+                        for t in ons_a:
+                            i = int(np.clip(np.searchsorted(ts_, t) - 1, 0, len(ts_) - 2))
+                            span = ts_[i + 1] - ts_[i]
+                            fr_ = (t - ts_[i]) / span
+                            if min(fr_, 1 - fr_) * span < 0.045:
+                                n += 1
+                        return n / max(1, len(ons_a))
+
+                    # Arbitrate on ON-BEAT AGREEMENT first, cost second.
+                    # Subdivision-fit cost WRAPS: a drifting metronomic
+                    # grid's accumulated error cycles onto other legal
+                    # positions, so its cost saturates (~30 ms) while notes
+                    # land on wrong beat-labels — measured on a real rock
+                    # clip where the "cheaper" metronomic grid scored
+                    # coverage 0.495 against the tracker's correct read.
+                    # On-beat fraction does not wrap, and the tracker's one
+                    # failure mode (offbeat phase-lock) shows up in it as a
+                    # collapse — so it guards both directions at once.
+                    ob_t, ob_m = _onbeat_frac(t_tr), _onbeat_frac(metro)
+                    take_tracked = (
+                        0.85 < p_tr / period < 1.18
+                        and (ob_t > ob_m + 0.03
+                             or (ob_t >= ob_m - 0.02 and c_track < c_metro * 0.92))
+                    )
+                    if take_tracked:
+                        first = int(np.argmin(
+                            [abs(t - float(ons_a[0])) + (0.3 * p_tr if t > ons_a[0] + 0.3 * p_tr else 0)
+                             for t in t_tr]))
+                        while first > 0 and t_tr[first] > ons_a[0] + 0.30 * p_tr:
+                            first -= 1
+                        return BeatGrid(
+                            beat_times=t_tr,
+                            beats_per_bar=beats_per_bar,
+                            first_downbeat=first,
+                            bpm_nominal=60.0 / p_tr,
+                        )
+            except Exception:
+                pass  # arbitration is an enhancement; metronomic is the floor
+
         t0 = float(downbeat)
         while t0 - period >= -period * 0.5:
             t0 -= period
