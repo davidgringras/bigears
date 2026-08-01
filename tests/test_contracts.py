@@ -49,7 +49,7 @@ PINNED_SIGNATURES = {
                           "program"],
     run_pipeline: ["audio_path", "out_dir", "key", "bpm", "beats_per_bar", "swing",
                    "separate", "mode", "chords", "title", "downbeat", "start", "end",
-                   "capo", "progress"],
+                   "capo", "variants", "progress"],
 }
 
 

@@ -336,6 +336,25 @@ def _bullets(heading: str, items: list[str]) -> str:
     )
 
 
+def _variants_html(metrics: dict) -> str:
+    rows = metrics.get("variants") or []
+    if not rows:
+        return ""
+    items = "".join(
+        "<li><strong>{slug}</strong> — {desc} <em>({n} notes, agreement "
+        "{f1:.0%}, attacks covered {cov:.0%})</em></li>".format(
+            slug=html.escape(str(v.get("slug", ""))),
+            desc=html.escape(str(v.get("description", ""))),
+            n=v.get("n_notes", "?"), f1=float(v.get("f1_100") or 0),
+            cov=float(v.get("coverage") or 0))
+        for v in rows)
+    return (
+        "<h4 style='margin:14px 0 6px'>Alternative readings</h4>"
+        "<p style='margin:0 0 6px'>Where a call was genuinely close, the other "
+        "reading is attached below, with the same measurements — choose with "
+        "your ears and the numbers together.</p><ul>" + items + "</ul>")
+
+
 def summary_html(result) -> str:
     """The verdict and the caveats, in the words the report itself uses."""
     metrics = dict(getattr(result, "metrics", None) or {})
@@ -362,6 +381,7 @@ def summary_html(result) -> str:
         f"<p style='margin:0;'>{html.escape(blurb)}</p>",
         _bullets("Why I say that", reasons),
         _bullets("Worth knowing before you trust it", warnings),
+        _variants_html(metrics),
         "<p style='margin:18px 0 0;font-size:14px;opacity:0.85;'>"
         "Both files are above. The report is a single web page — download it "
         "and open it in any browser; it has the piano roll, the bar-by-bar "
@@ -410,7 +430,7 @@ def transcribe_solo(
             pass
 
     if not audio_path:
-        return None, None, _note(
+        return None, None, None, _note(
             "Choose a recording first — an MP3, WAV, M4A, AIFF, FLAC, or an MP4/MOV video of the "
             "solo you want written out.",
             heading="Nothing to listen to yet",
@@ -423,10 +443,10 @@ def transcribe_solo(
         end_s = _number(end, "the end time", minimum=0.0, zero_means_blank=True)
         capo_fret = _number(capo, "the capo fret", minimum=0.0)
     except ValueError as exc:
-        return None, None, _note(str(exc), heading="I could not read one of the boxes")
+        return None, None, None, _note(str(exc), heading="I could not read one of the boxes")
 
     if start_s is not None and end_s is not None and end_s <= start_s:
-        return None, None, _note(
+        return None, None, None, _note(
             "The end time needs to come after the start time.",
             heading="I could not read one of the boxes",
         )
@@ -441,7 +461,7 @@ def transcribe_solo(
         last = min(end_s, total) if end_s is not None else total
         heard = max(0.0, last - first)
     if heard > MAX_CLIP_SECONDS:
-        return None, None, _note(
+        return None, None, None, _note(
             f"That is {_minutes(heard)} of audio, and I take three minutes at a "
             "time here — this runs on a small shared machine and a longer clip "
             "would keep everyone else queueing. Trim it to the solo itself "
@@ -480,7 +500,7 @@ def transcribe_solo(
             "Something went wrong and it did not tell me what."
         )
         print(f"[soloscribe] {kind} while transcribing:\n{traceback.format_exc()}", flush=True)
-        return None, None, _note(
+        return None, None, None, _note(
             f"{message}\n\nYour recording is untouched. If it happens again with "
             f"the same file, try a shorter excerpt, or save it as a WAV and start "
             f"over. The error was called {kind}, which is the bit David will want.",
@@ -493,7 +513,7 @@ def transcribe_solo(
     gp5 = gp5 if gp5 and os.path.exists(gp5) else None
     report = report if report and os.path.exists(report) else None
     if gp5 is None:
-        return None, None, _note(
+        return None, None, None, _note(
             "The transcription finished but no Guitar Pro file came out of it. "
             "Please tell David — this one is not your fault.",
             heading="I am sorry, that did not work",
@@ -501,7 +521,9 @@ def transcribe_solo(
         )
 
     tick(1.0, "Finished")
-    return gp5, report, summary_html(result)
+    alts = [v["file"] for v in (result.metrics or {}).get("variants", [])
+            if v.get("file") and os.path.exists(v["file"])] or None
+    return gp5, report, alts, summary_html(result)
 
 
 # --------------------------------------------------------------------------
@@ -618,6 +640,10 @@ def build_ui() -> gr.Blocks:
             with gr.Column(scale=2):
                 gp5_out = gr.File(label="The Guitar Pro file (.gp5)")
                 report_out = gr.File(label="The report on itself (report.html)")
+                alts_out = gr.Files(
+                    label="Alternative readings — close calls, each scored",
+                    visible=True,
+                )
                 summary_out = gr.HTML()
                 gr.Markdown(CLOSING)
 
@@ -625,7 +651,7 @@ def build_ui() -> gr.Blocks:
             fn=transcribe_solo,
             inputs=[audio, key, tempo, feel, mode, chords, title, isolate,
                     beats, downbeat, capo, start, end],
-            outputs=[gp5_out, report_out, summary_out],
+            outputs=[gp5_out, report_out, alts_out, summary_out],
             api_name="transcribe",
         )
     return demo

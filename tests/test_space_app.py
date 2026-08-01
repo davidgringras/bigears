@@ -160,7 +160,7 @@ def test_keys_are_spelled_the_way_the_pipeline_expects():
 
 
 def test_a_finished_transcription_returns_both_files(audio, calls):
-    gp5, report, html = _call(audio_path=audio, title="Blue Bossa")
+    gp5, report, alts, html = _call(audio_path=audio, title="Blue Bossa")
 
     assert gp5 is not None and Path(gp5).read_bytes() == GP5_BYTES
     assert report is not None and Path(report).read_text(encoding="utf-8") == REPORT_HTML
@@ -229,7 +229,7 @@ def test_progress_is_forwarded_and_a_broken_bar_does_not_lose_the_run(audio, mon
             reported.append((frac, desc))
             raise RuntimeError("the queue went away")
 
-    gp5, _, _ = _call(audio_path=audio, progress=Bar())
+    gp5, _, _, _ = _call(audio_path=audio, progress=Bar())
     assert gp5 is not None, "a failing progress bar must not fail the transcription"
     assert (0.5, "Working out the notes") in reported
 
@@ -246,7 +246,7 @@ def test_warnings_and_reasons_are_shown_and_escaped(audio, monkeypatch):
             warnings=["transcribed in single-note mode <script>alert(1)</script>"],
         ),
     )
-    _, _, html = _call(audio_path=audio)
+    _, _, _, html = _call(audio_path=audio)
 
     assert "struggled with this one" in html
     assert "only 41% of the attacks were accounted for" in html
@@ -268,7 +268,7 @@ def test_an_ungraded_run_says_so_rather_than_claiming_a_verdict(audio, monkeypat
             metrics={},
         ),
     )
-    gp5, report, html = _call(audio_path=audio)
+    gp5, report, alts, html = _call(audio_path=audio)
 
     assert gp5 is not None and report is None
     assert "could not grade myself" in html
@@ -281,7 +281,7 @@ def test_an_ungraded_run_says_so_rather_than_claiming_a_verdict(audio, monkeypat
 
 
 def test_no_recording_asks_for_one(calls):
-    gp5, report, html = _call(audio_path=None)
+    gp5, report, alts, html = _call(audio_path=None)
 
     assert (gp5, report) == (None, None)
     assert "Choose a recording first" in html
@@ -290,7 +290,7 @@ def test_no_recording_asks_for_one(calls):
 
 def test_a_clip_over_three_minutes_is_refused_before_the_pipeline_runs(audio, calls, monkeypatch):
     monkeypatch.setattr(app, "probe_duration", lambda path: 252.0)
-    gp5, report, html = _call(audio_path=audio)
+    gp5, report, alts, html = _call(audio_path=audio)
 
     assert (gp5, report) == (None, None)
     assert not calls, "the refusal must happen before any CPU is spent"
@@ -303,14 +303,14 @@ def test_trimming_rescues_a_long_recording(audio, calls, monkeypatch):
     # The cap is on what will be ANALYSED. Someone who trims a five-minute
     # track down to ninety seconds has done the right thing.
     monkeypatch.setattr(app, "probe_duration", lambda path: 300.0)
-    gp5, _, _ = _call(audio_path=audio, start="60", end="150")
+    gp5, _, _, _ = _call(audio_path=audio, start="60", end="150")
 
     assert gp5 is not None
     assert len(calls) == 1
 
 
 def test_an_unreadable_number_names_the_box(audio, calls):
-    gp5, report, html = _call(audio_path=audio, tempo="about 150ish")
+    gp5, report, alts, html = _call(audio_path=audio, tempo="about 150ish")
 
     assert (gp5, report) == (None, None)
     assert "the tempo" in html
@@ -318,7 +318,7 @@ def test_an_unreadable_number_names_the_box(audio, calls):
 
 
 def test_an_end_before_the_start_is_refused(audio, calls):
-    gp5, _, html = _call(audio_path=audio, start="90", end="30")
+    gp5, _, _, html = _call(audio_path=audio, start="90", end="30")
 
     assert gp5 is None
     assert "after the start time" in html
@@ -337,7 +337,7 @@ def test_a_pipeline_crash_becomes_an_apology_not_a_traceback(audio, monkeypatch)
         raise RuntimeError("tensor shape mismatch at layer 7")
 
     monkeypatch.setattr(app, "run_pipeline", boom)
-    gp5, report, html = _call(audio_path=audio)
+    gp5, report, alts, html = _call(audio_path=audio)
 
     assert (gp5, report) == (None, None)
     assert "did not work" in html
@@ -352,7 +352,7 @@ def test_a_known_failure_is_translated_out_of_jargon(audio, monkeypatch):
         raise MemoryError()
 
     monkeypatch.setattr(app, "run_pipeline", oom)
-    _, _, html = _call(audio_path=audio)
+    _, _, _, html = _call(audio_path=audio)
 
     assert "too big for me to hold all at once" in html
     assert "MemoryError" in html
@@ -370,7 +370,7 @@ def test_a_silent_exception_still_says_something(audio, monkeypatch):
         raise Odd()
 
     monkeypatch.setattr(app, "run_pipeline", raise_odd)
-    _, _, html = _call(audio_path=audio)
+    _, _, _, html = _call(audio_path=audio)
 
     assert "did not tell me what" in html
 
@@ -382,7 +382,7 @@ def test_a_missing_gp5_is_reported_as_not_your_fault(audio, monkeypatch):
         "run_pipeline",
         lambda audio_path, out_dir, **kw: _fake_result(out_dir, write_gp5=False),
     )
-    gp5, report, html = _call(audio_path=audio)
+    gp5, report, alts, html = _call(audio_path=audio)
 
     assert (gp5, report) == (None, None)
     assert "not your fault" in html
@@ -393,7 +393,7 @@ def test_an_unreadable_file_does_not_stop_the_run(audio, calls, monkeypatch):
     # be treated as a refusal — let the pipeline be the one to complain, since
     # its error messages are better than a guess made here.
     monkeypatch.setattr(app, "probe_duration", lambda path: 0.0)
-    gp5, _, _ = _call(audio_path=audio)
+    gp5, _, _, _ = _call(audio_path=audio)
 
     assert gp5 is not None
     assert len(calls) == 1

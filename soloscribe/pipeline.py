@@ -48,6 +48,7 @@ def run_pipeline(
     start: float | None = None,      # trim: analyze only [start, end] seconds
     end: float | None = None,
     capo: int = 0,                   # frets; fingering and tab become capo-relative
+    variants: bool = True,           # alternates where a contestable call fired
     progress: ProgressFn | None = None,
 ) -> PipelineResult:
     import librosa
@@ -189,6 +190,31 @@ def run_pipeline(
             "checks below cannot tell whose notes are whose"
         )
 
+    # Alternative readings, only where a measured trigger says the main
+    # reading made a genuinely contestable call (see variants.py).
+    variant_files: list[dict] = []
+    if variants and events:
+        try:
+            from .variants import generate_variants
+
+            for vr in generate_variants(events, grid, score, y, sr,
+                                        key=key, chords=chord_list, title=title):
+                vpath = os.path.join(out_dir, _safe_name(title) + f"-{vr.slug}.gp5")
+                write_gp5(vr.score, vpath)
+                variant_files.append({
+                    "slug": vr.slug, "description": vr.description,
+                    "file": vpath, "f1_100": round(vr.f1_100, 3),
+                    "coverage": round(vr.coverage, 3), "n_notes": vr.n_notes,
+                })
+            if variant_files:
+                warnings.append(
+                    f"I also wrote {len(variant_files)} alternative "
+                    "reading(s) of close calls — each is scored, so compare "
+                    "before you choose"
+                )
+        except Exception:
+            pass  # alternates are a bonus, never a wall
+
     _report(progress, "Checking my work against your recording", 0.82)
     report_path: str | None = None
     metrics: dict = {}
@@ -217,6 +243,7 @@ def run_pipeline(
         )
     _report(progress, "Checking my work against your recording", 1.0)
 
+    metrics["variants"] = variant_files
     return PipelineResult(
         gp5_path=gp5_path,
         report_path=report_path,
