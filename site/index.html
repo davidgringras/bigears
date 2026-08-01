@@ -238,8 +238,7 @@
     <div class="kicker reveal">Live — its actual output, untouched</div>
     <h2 class="reveal">Press play. Watch it read.</h2>
     <p class="reveal" style="max-width:38em">This is a real transcription by the
-    pipeline — an eight-bar bebop line over a ii–V–I in F, played over a
-    backing pad, no human help. Every glowing bar below is a note the machine
+    pipeline — an eight-bar bebop line over a ii–V–I in F, no human help. Every glowing bar below is a note the machine
     wrote down; the brighter the bar, the surer it was. Then flip the switch
     and hear <em style="color:var(--text-d)">its reading played back</em> —
     same solo, as the machine understood it.</p>
@@ -255,8 +254,7 @@
         </div>
         <span id="clock">0:00 / 0:00</span>
       </div>
-      <p class="stage-cap" id="stageCap"><em>The recording</em> — guitar over a
-      backing pad, the audio the machine was given. Click anywhere on the roll to
+      <p class="stage-cap" id="stageCap"><em>The recording</em> — the solo line the machine was given. Click anywhere on the roll to
       jump.</p>
     </div>
 
@@ -644,8 +642,8 @@
     mode = m;
     abA.classList.toggle("on", m === "A"); abB.classList.toggle("on", m === "B");
     cap.innerHTML = m === "A"
-      ? "<em>The recording</em> — guitar over a backing pad, the audio the machine was given. Click anywhere on the roll to jump."
-      : "<em>Its reading</em> — the machine replays exactly what it wrote down, note for note, on the same grid. What you hear matching is the accuracy.";
+      ? "<em>The recording</em> — the solo line the machine was given. Click anywhere on the roll to jump."
+      : "<em>Its reading</em> — everything it wrote down, replayed note for note on the same grid, voiced with a sampled guitar. What you hear matching is the accuracy.";
     if (playing && ready) startAt(pos());
   }
   abA.addEventListener("click", () => setMode("A"));
