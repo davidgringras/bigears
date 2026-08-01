@@ -1,0 +1,8 @@
+# Nothing here should ever reach the Space repo. make_space.py prunes these
+# too, on every run — this file is the belt to that pair of braces, for the
+# git-clone-and-push route where make_space.py is not the last thing to touch
+# the directory.
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store

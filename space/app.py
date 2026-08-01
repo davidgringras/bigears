@@ -35,9 +35,16 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     # The Space runs from its own root with the package vendored alongside this
-    # file (see make_space.py). Prepending is what lets `import soloscribe`
-    # find that copy rather than depending on the working directory.
-    sys.path.insert(0, str(HERE))
+    # file (see make_space.py), where `python app.py` already puts this
+    # directory first on sys.path — so this line is only insurance for the case
+    # where something IMPORTS app.py from elsewhere.
+    #
+    # APPEND, do not insert. Prepending would let the vendored snapshot shadow
+    # the real soloscribe/ package for the rest of the process, which in the
+    # repo's own test run means every test after this one silently exercising a
+    # copy that may be a commit or two behind. make_space.py --check is what
+    # guards the copy; sys.path is the wrong place to do it.
+    sys.path.append(str(HERE))
 
 import gradio as gr
 
@@ -429,8 +436,8 @@ def transcribe_solo(
             f"That is {_minutes(heard)} of audio, and I take three minutes at a "
             "time here — this runs on a small shared machine and a longer clip "
             "would keep everyone else queueing. Trim it to the solo itself "
-            "before you upload, or open “If you know a little more” below and "
-            "give me a three-minute stretch of it with the From and To boxes.",
+            "before you upload, or open “If you know a little more” and give me "
+            "a three-minute stretch of it with the From and To boxes.",
             heading="That clip is a little long for me",
         )
 
@@ -512,7 +519,8 @@ a scratch folder on a machine that forgets them when it restarts.
 
 
 def build_ui() -> gr.Blocks:
-    with gr.Blocks(title="SoloScribe", theme=gr.themes.Soft()) as demo:
+    # theme belongs on launch() from Gradio 6.0 onward; passing it here warns.
+    with gr.Blocks(title="SoloScribe") as demo:
         gr.Markdown(INTRO)
 
         with gr.Row():
@@ -620,6 +628,7 @@ def main() -> None:
     demo.launch(
         server_name=os.environ.get("GRADIO_SERVER_NAME", "0.0.0.0"),
         server_port=int(os.environ["GRADIO_SERVER_PORT"]) if os.environ.get("GRADIO_SERVER_PORT") else None,
+        theme=gr.themes.Soft(),
         max_file_size=MAX_UPLOAD,
         allowed_paths=[str(OUTPUT_ROOT)],
         show_error=True,

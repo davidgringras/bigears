@@ -73,6 +73,22 @@ def _copy(verbose: bool = True) -> list[Path]:
     return files
 
 
+def _prune_litter() -> list[Path]:
+    """Drop __pycache__ and friends from anywhere under space/.
+
+    Running the app or the tests locally leaves bytecode caches inside the very
+    directory that gets pushed, and `hf upload` sends what it is given. This
+    runs on every pass so the directory is clean at the moment it is uploaded,
+    rather than relying on whoever pushes to remember an --exclude flag.
+    """
+    dropped: list[Path] = []
+    for path in sorted(SPACE_DIR.rglob("*"), reverse=True):
+        if path.is_dir() and path.name in {"__pycache__", ".pytest_cache"}:
+            shutil.rmtree(path)
+            dropped.append(path.relative_to(SPACE_DIR))
+    return dropped
+
+
 def _check() -> int:
     """Exit 0 when the vendored copy matches the package it was made from."""
     if not VENDORED_PKG.exists():
@@ -124,6 +140,9 @@ def main(argv: list[str] | None = None) -> int:
         return _check()
 
     _copy(verbose=not args.quiet)
+    for rel in _prune_litter():
+        if not args.quiet:
+            print(f"  removed {rel}")
     print(f"\nSpace directory ready: {SPACE_DIR}")
     print("Push this directory to the Space repo — see space/README.md.")
     return 0

@@ -20,7 +20,7 @@ from soloscribe.fretting import assign_fretting
 from soloscribe.gp5_writer import write_gp5
 from soloscribe.pipeline import PipelineResult, run_pipeline
 from soloscribe.quantize import build_beat_grid, quantize
-from soloscribe.synth import render_score
+from soloscribe.synth import render_events_fluid, render_score
 from soloscribe.transcribe import transcribe
 
 PINNED_FIELDS = {
@@ -42,6 +42,11 @@ PINNED_SIGNATURES = {
     write_gp5: ["score", "path"],
     audit: ["score", "events", "original_path", "stem_path", "out_dir", "caveats"],
     render_score: ["score", "sr", "use_tempo_map"],
+    # Added with the sampled-guitar voicing: audit.py calls this every run and
+    # falls back to render_score when it returns None, so the argument order
+    # and the None contract are cross-module facts, not synth.py's business.
+    render_events_fluid: ["events", "comparison_audio", "sr", "soundfont",
+                          "program"],
     run_pipeline: ["audio_path", "out_dir", "key", "bpm", "beats_per_bar", "swing",
                    "separate", "mode", "chords", "title", "downbeat", "start", "end",
                    "capo", "progress"],
